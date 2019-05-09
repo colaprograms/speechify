@@ -2,4 +2,4 @@ The goal of this project is to train a SpecAugment + LibriSpeech 960h + Listen, 
 
 SpecAugment: https://ai.googleblog.com/2019/04/specaugment-new-data-augmentation.html
 
-Listen, Attend, and Spell: https://arxiv.org/pdf/1508.01211.pdf
+Listen, Attend, and Spell: https://arxiv.org/pdf/1508.01211.pdf and https://arxiv.org/pdf/1902.01955.pdf
