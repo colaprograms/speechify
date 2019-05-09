@@ -11,64 +11,100 @@ import matplotlib.animation
 import scipy as sp
 import scipy.signal
 
-from pyqtgraph.Qt import QtCore, QtGui
-import pyqtgraph as pg
-
-app = QtGui.QApplication([])
-win = pg.GraphicsWindow()
-win.setWindowTitle("microphone")
-view = win.addViewBox()
-
-view.setAspectLocked(True)
+import tkinter as tk
+from PIL import Image, ImageTk
 
 RATE = 44100
 BUFFER = 2048
-WIDTH = 129
+WIDTH = 600
 HEIGHT = 600
-SCALE = 4
+SCALE = 1
 
-win.resize(WIDTH * SCALE, HEIGHT)
-
-image = numpy.zeros((WIDTH * SCALE, HEIGHT), dtype=numpy.int8)
-img = pg.ImageItem(image)
-view.addItem(img)
-view.setRange(QtCore.QRectF(0, 0, WIDTH * SCALE, HEIGHT))
-img.setLevels([0, 1])
-
-def shift(a):
-    image[:, :-1] = image[:, 1:]
-    image[:, -1] = numpy.repeat(a[:WIDTH], SCALE)
-    img.setImage(image)
-
-p = pyaudio.PyAudio()
-
-stream = p.open(
-    format = pyaudio.paFloat32,
-    channels = 1,
-    rate = RATE,
-    input = True,
-    output = False,
-    frames_per_buffer = BUFFER
-)
-
-def update_line():
-    try:
-        freq, pow = sp.signal.welch(
-            numpy.frombuffer(stream.read(BUFFER), dtype=numpy.float32),
-            44100,
-            scaling='spectrum'
-        )
-    except IOError:
-        pass
-    pow *= 255 / numpy.max(pow)
-    shift(pow)
-    print(pow[:10])
+class MicrophoneDisplayer:
+    def __init__(self):
+        self.img = numpy.zeros((WIDTH * SCALE, HEIGHT), dtype=numpy.uint8)
+        self.buf = numpy.zeros(2*BUFFER, dtype=numpy.float32)
     
-def loop():
-    update_line()
+    def start(self):
+        self.root = tk.Tk()
+        self.canvas = tk.Canvas(self.root, width=WIDTH*SCALE, height=HEIGHT)
+        self.time = 0
+        self.cimg = None
+        self.canvas.pack()
+        self.root.after(100, self.loop)
+        self.startaudio()
+        self.root.mainloop()
+    
+    def loop(self):
+        self.update_line()
+        self.im = Image.frombuffer('L',
+            (WIDTH * SCALE, HEIGHT),
+            self.img.T.tobytes(),
+            "raw"
+        )
+        self.photo = ImageTk.PhotoImage(image = self.im)
+        
+        if self.cimg is None:
+            self.cimg = self.canvas.create_image(
+                0,
+                0,
+                image = self.photo,
+                anchor = tk.NW)
+        else:
+            #print("cimg", self.cimg)
+            self.canvas.itemconfig(
+                self.cimg,
+                image = self.photo
+            )
+        #print("loop")
+        self.root.after(10, self.loop)
 
-timer = QtCore.QTimer()
-timer.timeout.connect(loop)
-timer.start(10)
+    def shift(self, a):
+        l = len(a)
+        if l == 0:
+            return
+        if l > 20:
+            raise Exception("shifting a whole lot at once: error?")
+        self.img[:, :-l] = self.img[:, l:]
+        for i in range(l):
+            self.img[:, -l + i] = numpy.repeat(a[i][:WIDTH], SCALE)
 
-QtGui.QApplication.instance().exec_() # whee
+    def startaudio(self):
+        self.py = pyaudio.PyAudio()
+
+        self.stream = self.py.open(
+            format = pyaudio.paFloat32,
+            channels = 1,
+            rate = RATE,
+            input = True,
+            output = False,
+            frames_per_buffer = BUFFER
+        )
+
+    def cram(self, off):
+        freq, pow = sp.signal.welch(
+            self.buf[off:off+BUFFER],
+            44100,
+            nperseg = 2048,
+            scaling = 'spectrum',
+            detrend = 'linear'
+        )
+        return numpy.clip(
+            255 / 8 * (numpy.log10(pow) + 11), 0, 255)
+        
+    def update_line(self):
+        spec = []
+        while self.stream.get_read_available() >= BUFFER:
+            self.buf[:BUFFER] = self.buf[BUFFER:]
+            self.buf[BUFFER:2*BUFFER] = \
+                numpy.frombuffer(
+                    self.stream.read(BUFFER),
+                    dtype=numpy.float32)
+            spec.append(self.cram(BUFFER // 2))
+            spec.append(self.cram(BUFFER))
+        if len(spec) > 0:
+            self.shift(spec)
+        #print(pow[:10])
+
+m = MicrophoneDisplayer()
+m.start()
