@@ -8,7 +8,7 @@ Encoder:
 Decoder:
 
 * one or two LSTM
-* it uses attention
+* it uses attention as in the second paper
 
 $$c_k = \sum_l \alpha_{kl} h_l, \quad \alpha_{kl} = softmax(f_1(h_l)^T f_2(o_k^1))$$
 
@@ -18,6 +18,6 @@ Listen, Attend, and Spell: https://arxiv.org/pdf/1508.01211.pdf and https://arxi
 
 ## Other papers:
 
-Very Deep Convolutional Networks for End-to-End Speech Recognition: https://arxiv.org/pdf/1610.03022.pdf
+1. Very Deep Convolutional Networks for End-to-End Speech Recognition: https://arxiv.org/pdf/1610.03022.pdf
 
-Sequence-to-Sequence Models Can Directly Translate Foreign Speech: https://arxiv.org/pdf/1703.08581.pdf
+2. Sequence-to-Sequence Models Can Directly Translate Foreign Speech: https://arxiv.org/pdf/1703.08581.pdf
