@@ -16,9 +16,9 @@ from PIL import Image, ImageTk
 
 RATE = 44100
 BUFFER = 2048
-WIDTH = 600
+WIDTH = 1025
 HEIGHT = 900
-SCALE = 2
+SCALE = 1
 
 class MicrophoneDisplayer:
     def __init__(self):
