@@ -12,15 +12,15 @@ import scipy as sp
 import scipy.signal
 
 from scipy import fftpack
-from librosa.feature import melspectrogram
+
 import tkinter as tk
 from PIL import Image, ImageTk
 
 RATE = 44100
-BUFFER = 2048
-WIDTH = 128
+BUFFER = 4096
+WIDTH = 1025
 HEIGHT = 900
-SCALE = 4
+SCALE = 1
 MODE = "scan"
 
 class MicrophoneDisplayer:
@@ -30,7 +30,6 @@ class MicrophoneDisplayer:
         self.buffers = []
         self.offset = 0
         self.curline = 0
-        self.win = scipy.signal.get_window("hann", BUFFER, True)
     
     def start(self):
         self.root = tk.Tk()
@@ -64,13 +63,13 @@ class MicrophoneDisplayer:
                 image = self.photo
             )
         #print("loop")
-        self.root.after(10, self.loop)
+        self.root.after(100, self.loop)
 
     def shift(self, a):
         l = len(a)
         if l == 0:
             return
-        if l > 90:
+        if l > 40:
             raise Exception("shifting a whole lot at once: error?")
         if MODE == "roll":
             self.img[:, :-l] = self.img[:, l:]
@@ -78,7 +77,7 @@ class MicrophoneDisplayer:
                 self.img[:, -l + i] = numpy.repeat(a[i][:WIDTH], SCALE)
         elif MODE == "scan":
             for i in range(l):
-                self.img[:, HEIGHT - 1 - self.curline] = numpy.repeat(a[i][:WIDTH], SCALE)
+                self.img[:, HEIGHT - 1 - self.curline] = a[i]#numpy.repeat(a[i][:WIDTH], SCALE)
                 self.curline += 1
                 if self.curline == HEIGHT:
                     self.curline = 0
@@ -104,6 +103,7 @@ class MicrophoneDisplayer:
     def callback(self, in_data, frame_count, time_info, status_flags):
         self.buffers.append(
             numpy.frombuffer(in_data, dtype=numpy.float32))
+        print("read", frame_count)
         return (None, pyaudio.paContinue)
 
     def get_read_available(self):
@@ -113,6 +113,7 @@ class MicrophoneDisplayer:
         end = buf
         size = buf.shape[0]
         while len(self.buffers) > 0:
+            print("buffers", [c.shape[0] for c in self.buffers])
             cur = self.buffers[0][self.offset:]
             if end.shape[0] > cur.shape[0]:
                 end[:cur.shape[0]] = cur
@@ -126,27 +127,31 @@ class MicrophoneDisplayer:
         raise Exception("ran off of end")
 
     def cram(self, off):
-        buf = scipy.signal.detrend(self.buf[off:off+BUFFER])
-        fft = fftpack.rfft(buf * self.win)
-        pow = numpy.zeros(BUFFER // 2 + 1, dtype=numpy.float32)
-        pow[0] = fft[0] ** 2
-        pow[1:] = fft[1::2] ** 2
-        pow[1:-1] += fft[2::2] ** 2
-        #print("trying melspectrogram")
-        pow = melspectrogram(S = pow)
+        print("cram", off)
+        freq, pow = sp.signal.welch(
+            self.buf[off:off+BUFFER],
+            44100,
+            nperseg = 2048,
+            scaling = 'spectrum',
+            detrend = 'linear'
+        )
+        #print(numpy.log10(pow[:12]))
         return numpy.clip(
-            255 / 7 * (numpy.log10(pow) + 4), 0, 255)
+            255 / 7 * (numpy.log10(pow) + 11), 0, 255)
         
     def update_line(self):
         spec = []
         #print(self.buffers)
         while self.get_read_available() >= BUFFER:
+            print(self.get_read_available())
             self.buf[:BUFFER] = self.buf[BUFFER:]
             self.read(self.buf[BUFFER:])
-            #for j in range(1, 9):
-            #    spec.append(self.cram(j * BUFFER // 8))
-            spec.append(self.cram(BUFFER // 2))
-            spec.append(self.cram(BUFFER))
+            #spec.append(self.cram(BUFFER // 4))
+            #spec.append(self.cram(BUFFER // 2))
+            #spec.append(self.cram(3*BUFFER // 4))
+            #spec.append(self.cram(BUFFER))
+            for i in range(1, 9):
+                spec.append(self.cram(i * BUFFER // 8))
         if len(spec) > 0:
             self.shift(spec)
         #print(pow[:10])

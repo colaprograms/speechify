@@ -12,15 +12,15 @@ import scipy as sp
 import scipy.signal
 
 from scipy import fftpack
-from librosa.feature import melspectrogram
+
 import tkinter as tk
 from PIL import Image, ImageTk
 
 RATE = 44100
 BUFFER = 2048
-WIDTH = 128
+WIDTH = 1025
 HEIGHT = 900
-SCALE = 4
+SCALE = 1
 MODE = "scan"
 
 class MicrophoneDisplayer:
@@ -78,7 +78,7 @@ class MicrophoneDisplayer:
                 self.img[:, -l + i] = numpy.repeat(a[i][:WIDTH], SCALE)
         elif MODE == "scan":
             for i in range(l):
-                self.img[:, HEIGHT - 1 - self.curline] = numpy.repeat(a[i][:WIDTH], SCALE)
+                self.img[:, HEIGHT - 1 - self.curline] = a[i]#numpy.repeat(a[i][:WIDTH], SCALE)
                 self.curline += 1
                 if self.curline == HEIGHT:
                     self.curline = 0
@@ -132,8 +132,6 @@ class MicrophoneDisplayer:
         pow[0] = fft[0] ** 2
         pow[1:] = fft[1::2] ** 2
         pow[1:-1] += fft[2::2] ** 2
-        #print("trying melspectrogram")
-        pow = melspectrogram(S = pow)
         return numpy.clip(
             255 / 7 * (numpy.log10(pow) + 4), 0, 255)
         
@@ -143,10 +141,8 @@ class MicrophoneDisplayer:
         while self.get_read_available() >= BUFFER:
             self.buf[:BUFFER] = self.buf[BUFFER:]
             self.read(self.buf[BUFFER:])
-            #for j in range(1, 9):
-            #    spec.append(self.cram(j * BUFFER // 8))
-            spec.append(self.cram(BUFFER // 2))
-            spec.append(self.cram(BUFFER))
+            for j in range(1, 9):
+                spec.append(self.cram(j * BUFFER // 8))
         if len(spec) > 0:
             self.shift(spec)
         #print(pow[:10])
