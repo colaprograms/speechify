@@ -18,7 +18,7 @@ from PIL import Image, ImageTk
 
 RATE = 44100
 BUFFER = 2048
-WIDTH = 1025
+WIDTH = 128#1025
 HEIGHT = 900
 SCALE = 1
 MODE = "scan"
@@ -31,6 +31,7 @@ class MicrophoneDisplayer:
         self.offset = 0
         self.curline = 0
         self.win = scipy.signal.get_window("hann", BUFFER, True)
+        self.coeffic = None
     
     def start(self):
         self.root = tk.Tk()
@@ -132,8 +133,34 @@ class MicrophoneDisplayer:
         pow[0] = fft[0] ** 2
         pow[1:] = fft[1::2] ** 2
         pow[1:-1] += fft[2::2] ** 2
-        return numpy.clip(
-            255 / 7 * (numpy.log10(pow) + 4), 0, 255)
+        return self.mangle(pow)
+        #return numpy.clip(
+        #    255 / 7 * (numpy.log10(pow) + 4), 0, 255)
+
+    def f(self, z):
+        return numpy.exp(z) - 10
+    def inv(self, z):
+        return numpy.log(z + 10)
+
+    def mangle(self, pow):
+        #warp = numpy.exp(numpy.linspace(1, numpy.log(1024 - 0.1), 128))
+        warp = self.f(numpy.linspace(
+            self.inv(1 + 0.1),
+            self.inv(1024 - 0.1),
+            128))
+        f = numpy.floor(warp).astype(int)
+        c = numpy.ceil(warp).astype(int)
+        b = c - warp
+        pow = b * pow[f] + (1-b) * pow[c]
+        pow *= warp
+        pow = numpy.log10(pow)
+        bottom, top = numpy.percentile(pow, [10, 100])
+        print(bottom, top)
+        bottom = -4.9
+        top = 0
+        self.coeffic = 255/(top - bottom), -bottom
+        a, b = self.coeffic
+        return numpy.clip(a * (pow + b), 0, 255)
         
     def update_line(self):
         spec = []
