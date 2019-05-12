@@ -96,7 +96,7 @@ class MicrophoneDisplayer:
             rate = RATE,
             input = True,
             output = False,
-            frames_per_buffer = 2048,
+            frames_per_buffer = 1024,
             stream_callback = self.callback
         )
 
@@ -155,9 +155,8 @@ class MicrophoneDisplayer:
         pow *= warp
         pow = numpy.log10(pow)
         bottom, top = numpy.percentile(pow, [10, 100])
-        print(bottom, top)
         bottom = -4.9
-        top = 0
+        top = 1.2
         self.coeffic = 255/(top - bottom), -bottom
         a, b = self.coeffic
         return numpy.clip(a * (pow + b), 0, 255)
