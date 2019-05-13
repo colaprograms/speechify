@@ -17,10 +17,21 @@ import tkinter as tk
 from PIL import Image, ImageTk
 
 RATE = 44100
-BUFFER = 2048
-WIDTH = 128#1025
+if True:
+    BUFFER = 1024
+    WIDTH = 64#1025
+    MEL_WIDTH = 64
+else:
+    BUFFER = 2048
+    WIDTH = 128
+    MEL_WIDTH = 128
+FRAGMENTS = 2
+add_deltafeatures = True
+if add_deltafeatures:
+    WIDTH *= 3
 HEIGHT = 900
 SCALE = 1
+M = 3
 MODE = "scan"
 
 class MicrophoneDisplayer:
@@ -32,6 +43,7 @@ class MicrophoneDisplayer:
         self.curline = 0
         self.win = scipy.signal.get_window("hann", BUFFER, True)
         self.coeffic = None
+        self.last = []
     
     def start(self):
         self.root = tk.Tk()
@@ -67,19 +79,33 @@ class MicrophoneDisplayer:
         #print("loop")
         self.root.after(10, self.loop)
 
+    def row(self, a):
+        if not add_deltafeatures:
+            return numpy.clip(a, 0, 255)
+        self.last.append(a)
+        if len(self.last) < 2**M + 1:
+            return numpy.zeros(3 * MEL_WIDTH)
+        a, b, c = self.last[0], self.last[M], self.last[2*M]
+        self.last.pop(0)
+        return numpy.clip(
+            numpy.concatenate((b, 2*(c-a), 2*a - 4*b + 2*c)),
+            0, 255)
+        
     def shift(self, a):
         l = len(a)
         if l == 0:
             return
-        if l > 90:
-            raise Exception("shifting a whole lot at once: error?")
+        #if l > 90:
+        #    print("shifting a lot:", l)
+            #if l > 180:
+            #    raise Exception("shifting a whole lot at once: error?")
         if MODE == "roll":
             self.img[:, :-l] = self.img[:, l:]
             for i in range(l):
-                self.img[:, -l + i] = numpy.repeat(a[i][:WIDTH], SCALE)
+                self.img[:, -l + i] = self.row(a[i][:WIDTH])
         elif MODE == "scan":
             for i in range(l):
-                self.img[:, HEIGHT - 1 - self.curline] = a[i]#numpy.repeat(a[i][:WIDTH], SCALE)
+                self.img[:, HEIGHT - 1 - self.curline] = self.row(a[i][:WIDTH])
                 self.curline += 1
                 if self.curline == HEIGHT:
                     self.curline = 0
@@ -146,8 +172,8 @@ class MicrophoneDisplayer:
         #warp = numpy.exp(numpy.linspace(1, numpy.log(1024 - 0.1), 128))
         warp = self.f(numpy.linspace(
             self.inv(1 + 0.1),
-            self.inv(1024 - 0.1),
-            128))
+            self.inv(BUFFER // 2 - 0.1),
+            MEL_WIDTH))
         f = numpy.floor(warp).astype(int)
         c = numpy.ceil(warp).astype(int)
         b = c - warp
@@ -155,11 +181,16 @@ class MicrophoneDisplayer:
         pow *= warp
         pow = numpy.log10(pow)
         bottom, top = numpy.percentile(pow, [10, 100])
-        bottom = -4.9
-        top = 1.2
+        place = "sandbox"
+        if place == "home":
+            bottom = -4.9
+            top = 1.2
+        elif place == "sandbox":
+            bottom = -3
+            top = 4
         self.coeffic = 255/(top - bottom), -bottom
         a, b = self.coeffic
-        return numpy.clip(a * (pow + b), 0, 255)
+        return a * (pow + b)#return numpy.clip(a * (pow + b), 0, 255)
         
     def update_line(self):
         spec = []
@@ -167,8 +198,12 @@ class MicrophoneDisplayer:
         while self.get_read_available() >= BUFFER:
             self.buf[:BUFFER] = self.buf[BUFFER:]
             self.read(self.buf[BUFFER:])
-            for j in range(1, 9):
-                spec.append(self.cram(j * BUFFER // 8))
+            #spec.append(self.cram(BUFFER // 2))
+            #spec.append(self.cram(BUFFER))#for j in range(1, 9):
+            for j in range(1, FRAGMENTS + 1):
+                spec.append(self.cram(j * BUFFER // FRAGMENTS))
+            #for j in range(1, 9):
+            #    spec.append(self.cram(j * BUFFER // 8))#    spec.append(self.cram(j * BUFFER // 8))
         if len(spec) > 0:
             self.shift(spec)
         #print(pow[:10])

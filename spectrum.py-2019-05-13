@@ -12,15 +12,15 @@ import scipy as sp
 import scipy.signal
 
 from scipy import fftpack
-
+from librosa.feature import melspectrogram
 import tkinter as tk
 from PIL import Image, ImageTk
 
 RATE = 44100
 BUFFER = 2048
-WIDTH = 128#1025
+WIDTH = 128
 HEIGHT = 900
-SCALE = 1
+SCALE = 4
 MODE = "scan"
 
 class MicrophoneDisplayer:
@@ -31,7 +31,6 @@ class MicrophoneDisplayer:
         self.offset = 0
         self.curline = 0
         self.win = scipy.signal.get_window("hann", BUFFER, True)
-        self.coeffic = None
     
     def start(self):
         self.root = tk.Tk()
@@ -72,16 +71,14 @@ class MicrophoneDisplayer:
         if l == 0:
             return
         if l > 90:
-            print("shifting a lot:", l)
-            if l > 180:
-                raise Exception("shifting a whole lot at once: error?")
+            raise Exception("shifting a whole lot at once: error?")
         if MODE == "roll":
             self.img[:, :-l] = self.img[:, l:]
             for i in range(l):
                 self.img[:, -l + i] = numpy.repeat(a[i][:WIDTH], SCALE)
         elif MODE == "scan":
             for i in range(l):
-                self.img[:, HEIGHT - 1 - self.curline] = a[i]#numpy.repeat(a[i][:WIDTH], SCALE)
+                self.img[:, HEIGHT - 1 - self.curline] = numpy.repeat(a[i][:WIDTH], SCALE)
                 self.curline += 1
                 if self.curline == HEIGHT:
                     self.curline = 0
@@ -98,7 +95,7 @@ class MicrophoneDisplayer:
             rate = RATE,
             input = True,
             output = False,
-            frames_per_buffer = 1024,
+            frames_per_buffer = 2048,
             stream_callback = self.callback
         )
 
@@ -135,38 +132,10 @@ class MicrophoneDisplayer:
         pow[0] = fft[0] ** 2
         pow[1:] = fft[1::2] ** 2
         pow[1:-1] += fft[2::2] ** 2
-        return self.mangle(pow)
-        #return numpy.clip(
-        #    255 / 7 * (numpy.log10(pow) + 4), 0, 255)
-
-    def f(self, z):
-        return numpy.exp(z) - 10
-    def inv(self, z):
-        return numpy.log(z + 10)
-
-    def mangle(self, pow):
-        #warp = numpy.exp(numpy.linspace(1, numpy.log(1024 - 0.1), 128))
-        warp = self.f(numpy.linspace(
-            self.inv(1 + 0.1),
-            self.inv(1024 - 0.1),
-            128))
-        f = numpy.floor(warp).astype(int)
-        c = numpy.ceil(warp).astype(int)
-        b = c - warp
-        pow = b * pow[f] + (1-b) * pow[c]
-        pow *= warp
-        pow = numpy.log10(pow)
-        bottom, top = numpy.percentile(pow, [10, 100])
-        place = "sandbox"
-        if place == "home":
-            bottom = -4.9
-            top = 1.2
-        elif place == "sandbox":
-            bottom = -3
-            top = 4
-        self.coeffic = 255/(top - bottom), -bottom
-        a, b = self.coeffic
-        return numpy.clip(a * (pow + b), 0, 255)
+        #print("trying melspectrogram")
+        pow = melspectrogram(S = pow)
+        return numpy.clip(
+            255 / 7 * (numpy.log10(pow) + 4), 0, 255)
         
     def update_line(self):
         spec = []
@@ -174,8 +143,10 @@ class MicrophoneDisplayer:
         while self.get_read_available() >= BUFFER:
             self.buf[:BUFFER] = self.buf[BUFFER:]
             self.read(self.buf[BUFFER:])
-            for j in range(1, 9):
-                spec.append(self.cram(j * BUFFER // 8))
+            #for j in range(1, 9):
+            #    spec.append(self.cram(j * BUFFER // 8))
+            spec.append(self.cram(BUFFER // 2))
+            spec.append(self.cram(BUFFER))
         if len(spec) > 0:
             self.shift(spec)
         #print(pow[:10])
