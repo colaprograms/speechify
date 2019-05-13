@@ -129,11 +129,12 @@ class spectralize:
 
 class MicrophoneDisplayer:
     def __init__(self, width=64, height=900, add_deltafeatures=False):
-        self.width = width * (3 if add_deltafeatures else 1)
+        self.width = width
+        self.imgwidth = width * (3 if add_deltafeatures else 1)
         self.height = height
         self.rate = 44100
         self.add_deltafeatures = add_deltafeatures
-        self.img = numpy.zeros((self.width, self.height), dtype=numpy.uint8)
+        self.img = numpy.zeros((self.imgwidth, self.height), dtype=numpy.uint8)
         self.spe = spectralize(
             self.rate,
             width * 16,
@@ -144,7 +145,7 @@ class MicrophoneDisplayer:
         
     def start(self):
         self.root = tk.Tk()
-        self.canvas = tk.Canvas(self.root, width=self.width, height=self.height)
+        self.canvas = tk.Canvas(self.root, width=self.imgwidth, height=self.height)
         self.time = 0
         self.cimg = None
         self.canvas.pack()
@@ -155,7 +156,7 @@ class MicrophoneDisplayer:
     def loop(self):
         self.update()
         self.im = Image.frombuffer('L',
-            (self.width, self.height),
+            (self.imgwidth, self.height),
             self.img.T.tobytes(),
             "raw"
         )
