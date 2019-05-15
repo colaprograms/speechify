@@ -1,0 +1,5 @@
+#!/bin/bash
+#DOC="nvidia-docker run --user 1000 -v $PWD:/tmp/note -v /home/cola/src/j:/home/cola/src/j -w=/tmp/note -p 9999:9999 --rm -it kaggle/python"
+CERTS=/home/cola/src/j
+#${DOC}
+jupyter notebook --ip=192.168.0.198 --port=9999 --no-browser --certfile ${CERTS}/mycert.pem --keyfile ${CERTS}/mykey.key
