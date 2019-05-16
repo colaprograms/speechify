@@ -10,19 +10,35 @@ from PIL import Image, ImageTk
 
 from util.spectrogram_generator import Params, generator
 
+VERBOSE = True
 class MicrophoneDisplayer:
     def __init__(self, width=64, height=900, add_deltafeatures=False):
         self.width = width
         self.imgwidth = width * (3 if add_deltafeatures else 1)
         self.height = height
-        self.rate = 44100
+        self.rate = 16000
         self.add_deltafeatures = add_deltafeatures
         self.img = numpy.zeros((self.imgwidth, self.height), dtype=numpy.uint8)
-        self.generator = generator(
-            Params(self.rate, width * 16, width, add_deltafeatures = add_deltafeatures)
-        )
+        # we are aiming for 15~20 ms per buffer
+        if self.rate == 16000:
+            self.fftwidth = 512 # 16 ms
+        elif self.rate == 44100:
+            self.fftwidth = 1024 # 11 ms
+        else:
+            raise Exception("don't know the fftwidth for this rate")
+        self.params = Params(self.rate, self.fftwidth, width, add_deltafeatures = add_deltafeatures)
+        self.generator = generator(self.params)
         self.curline = 0
-        
+        if VERBOSE:
+            print("Created microphone display.")
+            print("Signal rate: %d Hz" % self.rate)
+            print("FFT width: %d" % self.fftwidth)
+            print("Time between buffers: %d ms" % (self.time_between_buffers() * 1000))
+    
+    def time_between_buffers(self):
+        # samples per buffer * seconds per buffer / subdivisions
+        return self.fftwidth / self.rate / self.params.subdivisions
+    
     def start(self):
         self.root = tk.Tk()
         self.canvas = tk.Canvas(self.root, width=self.imgwidth, height=self.height)

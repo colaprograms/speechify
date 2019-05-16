@@ -7,8 +7,8 @@ import scipy.signal
 from scipy import fftpack
 
 class Params:
-    def __init__(self, rate = 44100, buffer_length = 1024, mel_width = 64,
-                 subdivisions = 2, m = 3, add_deltafeatures = True):
+    def __init__(self, rate = 16000, buffer_length = 1024, mel_width = 64,
+                 subdivisions = 2, m = 1, add_deltafeatures = True):
         self.rate = rate
         self.buffer_length = buffer_length
         self.mel_width = mel_width
@@ -63,7 +63,7 @@ class Mangler:
         
         epsilon = 0.1
         start = inv(1 + epsilon)
-        end = inv(n // 2 - epsilon)
+        end = inv(n - 1 - epsilon)
         z = numpy.linspace(start, end, width)
         warp = f(z)
         
@@ -87,7 +87,22 @@ def signal_to_spectrogram(buf, win):
     
 def signal_to_mel_spectrum(buf, win, width):
     return Mangler.mangle(signal_to_spectrogram(buf, win), width)
-    
+
+def spectrum_scale(spec):
+    bottom, top = numpy.percentile(spec, [10, 100])
+    #print(bottom, top)
+    place = "sandbox"
+    if place == "home":
+        bottom, top = -4.9, 1.2
+    elif place == "sandbox":
+        bottom, top = -3, 4
+    a, b = 255 / (top - bottom), -bottom
+    return a * (spec + b)
+
+def deltafeatures(spec_list, m, j=0):
+    a, b, c = spec_list[j], spec_list[j+m], spec_list[j+2*m]
+    return numpy.concatenate((b, 2*(c-a), 2*a - 4*b + 2*c))
+
 class generator:
     def __init__(self, params = None):
         self.params = params or Params()
@@ -116,19 +131,8 @@ class generator:
                 start = j * buffer_length // subdivisions
                 end = start + buffer_length
                 spectrum = signal_to_mel_spectrum(self.soundbuf[start:end], self.win, width)
-                self.raw_spectrum_buffer.append(self.rescale(spectrum))
-    
-    def rescale(self, buf):
-        bottom, top = numpy.percentile(buf, [10, 100])
-        #print(bottom, top)
-        place = "sandbox"
-        if place == "home":
-            bottom, top = -4.9, 1.2
-        elif place == "sandbox":
-            bottom, top = -3, 4
-        a, b = 255 / (top - bottom), -bottom
-        return a * (buf + b)
-    
+                self.raw_spectrum_buffer.append(spectrum_scale(spectrum))
+
     def next(self):
         if not self.params.add_deltafeatures:
             return self.next_nodeltafeatures()
@@ -150,6 +154,49 @@ class generator:
             self.process()
         if len(R) < 2**m + 1:
             return None
-        a, b, c = R[0], R[m], R[2*m]
+        ret = deltafeatures(R, m)
         R.pop(0)
-        return numpy.concatenate((b, 2*(c-a), 2*a - 4*b + 2*c))
+        return ret
+
+class whole_buffer:
+    def __init__(self, params = None):
+        self.params = params or Params()
+        self.buflen = self.params.buffer_length
+        self.win = scipy.signal.get_window("hann", self.buflen, True)
+        self.run = False
+        
+    def set(self, buf):
+        self.buf = buf
+        self.offset = 0
+        self.raw_spectrum_buffer = []
+        self.run = True
+    
+    def process(self):
+        if self.offset + self.buflen > self.buf.shape[0]:
+            self.run = False
+        if self.run:
+            spectrum = signal_to_mel_spectrum(
+                self.buf[self.offset:self.offset + self.buflen],
+                self.win,
+                self.params.mel_width)
+            self.raw_spectrum_buffer.append(spectrum_scale(spectrum))
+            self.offset += self.buflen // 2
+    
+    def next(self):
+        R = self.raw_spectrum_buffer
+        while self.run and len(R) < 2**self.params.m + 1:
+            self.process()
+        if self.run:
+            ret = deltafeatures(R, self.params.m)
+            R.pop(0)
+            return ret
+        return
+    
+    def all(self, buf):
+        self.set(buf)
+        out = []
+        while self.run:
+            z = self.next()
+            if z is not None:
+                out.append(z)
+        return numpy.stack(out)
