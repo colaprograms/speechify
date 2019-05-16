@@ -7,7 +7,7 @@ import scipy.signal
 from scipy import fftpack
 
 class Params:
-    def __init__(self, rate = 16000, buffer_length = 1024, mel_width = 64,
+    def __init__(self, rate = 16000, buffer_length = 512, mel_width = 64,
                  subdivisions = 2, m = 1, add_deltafeatures = True):
         self.rate = rate
         self.buffer_length = buffer_length
