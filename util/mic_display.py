@@ -12,11 +12,12 @@ from util.spectrogram_generator import Params, generator
 
 VERBOSE = True
 class MicrophoneDisplayer:
-    def __init__(self, width=64, height=900, add_deltafeatures=False):
+    def __init__(self, rate=16000, width=64, add_deltafeatures=False):
+        height = 900
         self.width = width
         self.imgwidth = width * (3 if add_deltafeatures else 1)
         self.height = height
-        self.rate = 16000
+        self.rate = rate
         self.add_deltafeatures = add_deltafeatures
         self.img = numpy.zeros((self.imgwidth, self.height), dtype=numpy.uint8)
         # we are aiming for 15~20 ms per buffer
@@ -27,6 +28,7 @@ class MicrophoneDisplayer:
         else:
             raise Exception("don't know the fftwidth for this rate")
         self.params = Params(self.rate, self.fftwidth, width, add_deltafeatures = add_deltafeatures)
+        self.params.subdivisions = 4
         self.generator = generator(self.params)
         self.curline = 0
         if VERBOSE:

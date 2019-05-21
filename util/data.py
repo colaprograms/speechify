@@ -11,6 +11,18 @@ def listdir(a, *p):
     return os.listdir(join(a, *p))
 
 class LibriSpeech:
+    """Typical use:
+
+    ls = LibriSpeech()
+    ls.load() # load from index
+    batch = [ls.uniform_random() for i in range(256)]
+    for file in batch:
+        print(file['path'], "Duration:", file['time'], "sec")
+        print("Transcript:")
+        print(file['trans'])
+
+    To make an index, see createindex.py.
+    """
     def __init__(self):
         self.data = {}
         self.info = {}

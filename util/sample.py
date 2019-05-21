@@ -2,16 +2,17 @@ from util.spectrogram_generator import whole_buffer
 from util.data import LibriSpeech
 import soundfile as sf
 from os.path import join
+import matplotlib.pyplot as p
+import config
+import numpy
 
 class Sampler:
     def __init__(self, home=False):
-        if home:
-            self.path = "../speechify_dat/combined"
-        else:
-            self.path = r"c:\users\meta\documents\speechify\LibriSpeech\combined"
+        self.path = config.path
         self.ls = LibriSpeech()
         self.ls.load()
         self.wb = whole_buffer()
+        self.wb.params.spectrum_range = config.librispeech_range
     
     def rand(self):
         file = self.ls.uniform_random()
@@ -23,6 +24,9 @@ class Sampler:
         pass
 
 def imshow(buf):
+    # rar
+    # rar
+    import matplotlib
     import matplotlib.pyplot as p
-    p.imshow(buf)
+    p.imshow(buf, norm=matplotlib.colors.Normalize(0, 255))
     p.show()

@@ -2,19 +2,21 @@
 # -*- charset utf8 -*-
 
 import numpy
-import scipy as sp
+import config
 import scipy.signal
 from scipy import fftpack
 
 class Params:
     def __init__(self, rate = 16000, buffer_length = 512, mel_width = 64,
-                 subdivisions = 2, m = 1, add_deltafeatures = True):
+                 subdivisions = 4, m = 3, add_deltafeatures = True,
+                 spectrum_range = None):
         self.rate = rate
         self.buffer_length = buffer_length
         self.mel_width = mel_width
         self.subdivisions = subdivisions
         self.m = m
         self.add_deltafeatures = add_deltafeatures
+        self.spectrum_range = spectrum_range or config.microphone_volume_range
 
 class RawSoundBuffer:
     def __init__(self):
@@ -68,16 +70,26 @@ class Mangler:
         warp = f(z)
         
         _floor = numpy.floor(warp).astype(int)
-        _ceil = numpy.ceil(warp).astype(int)
+        #_ceil = numpy.ceil(warp).astype(int)
         _frac = warp - _floor
         
-        buf = (1 - _frac) * buf[_floor] + _frac * buf[_ceil]
+        buf = (1 - _frac) * buf[_floor] + _frac * buf[_floor + 1]
         buf *= diff(z)
-        buf = numpy.log10(buf)
+        buf = numpy.log10(buf + 1e-8)
         return buf
 
+def unitlinear(m):
+    dot = m * (m+1) / (m-1) / 3
+    return numpy.linspace(-1, 1, m) / numpy.sqrt(dot)
+
+def detrend(buf): # scipy's detrend is weirdly pretty slow
+    buf -= numpy.mean(buf)
+    x = unitlinear(buf.shape[0])
+    return buf - x * numpy.dot(x, buf)
+
 def signal_to_spectrogram(buf, win):
-    fft = fftpack.rfft(scipy.signal.detrend(buf) * win)
+    fft = fftpack.rfft(buf * win)
+    #fft = fftpack.rfft(detrend(buf) * win)
     pow = numpy.zeros(buf.shape[0] // 2 + 1, dtype=numpy.float32)
     fft **= 2
     pow[0] = fft[0]
@@ -88,14 +100,13 @@ def signal_to_spectrogram(buf, win):
 def signal_to_mel_spectrum(buf, win, width):
     return Mangler.mangle(signal_to_spectrogram(buf, win), width)
 
-def spectrum_scale(spec):
-    bottom, top = numpy.percentile(spec, [10, 100])
-    #print(bottom, top)
-    place = "sandbox"
-    if place == "home":
-        bottom, top = -4.9, 1.2
-    elif place == "sandbox":
-        bottom, top = -3, 4
+def spectrum_scale(spec, ran):
+    #bottom, top = numpy.percentile(spec, [10, 100])
+    bottom, top = ran#config.microphone_volume_range
+    #if config.place == "home":
+    #    bottom, top = -4.9, 1.2
+    #elif config.place == "sandbox":
+    #    bottom, top = -3, 4
     a, b = 255 / (top - bottom), -bottom
     return a * (spec + b)
 
@@ -114,7 +125,8 @@ class generator:
         self.raw_sound_buffer = RawSoundBuffer()
         self.raw_spectrum_buffer = []
         self.output_spectrum_buffer = []
-        self.win = scipy.signal.get_window("hann", buflen, True)
+        self.win = scipy.signal.get_window("blackman", buflen, True)
+        #self.win = scipy.signal.get_window("hann", buflen, True)
         
     def add(self, buf):
         self.raw_sound_buffer.add(buf)
@@ -131,7 +143,8 @@ class generator:
                 start = j * buffer_length // subdivisions
                 end = start + buffer_length
                 spectrum = signal_to_mel_spectrum(self.soundbuf[start:end], self.win, width)
-                self.raw_spectrum_buffer.append(spectrum_scale(spectrum))
+                self.raw_spectrum_buffer.append(spectrum_scale(spectrum,
+                    self.params.spectrum_range))
 
     def next(self):
         if not self.params.add_deltafeatures:
@@ -179,7 +192,8 @@ class whole_buffer:
                 self.buf[self.offset:self.offset + self.buflen],
                 self.win,
                 self.params.mel_width)
-            self.raw_spectrum_buffer.append(spectrum_scale(spectrum))
+            self.raw_spectrum_buffer.append(spectrum_scale(spectrum,
+                self.params.spectrum_range))
             self.offset += self.buflen // 2
     
     def next(self):
