@@ -24,6 +24,8 @@ class convblock(tf.keras.Model):
             Dense(channels // 16, activation='relu', kernel_initializer='he_normal', use_bias=False),
             Dense(channels, activation='sigmoid', kernel_initializer='he_normal', use_bias=False)
         ])
+        self.bn2 = BatchNormalization(axis=3)
+        self.act2 = LeakyReLU()
         
     def call(self, x):
         shortcut = self.conv0(x)
@@ -31,11 +33,11 @@ class convblock(tf.keras.Model):
         out = self.bn1(out)
         out = self.act1(out)
         out = self.conv2(out)
+        squ = self.squeeze(out)
+        out = Multiply()([squ, out])
         out = self.bn2(out)
         out = self.act2(out)
-        squ = self.squeeze(out)
-        out = Multiply([squ, out])
-        return Add([shortcut, out])
+        return Add()([shortcut, out])
         
 class encoder(tf.keras.Model):
     def __init__(self):
