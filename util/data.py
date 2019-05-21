@@ -74,6 +74,8 @@ class LibriSpeech:
                     cumulativetime += self.data[reader][book][i]['time']
         self.info['time'] = time
 
+    def train_test_split(self):
+
     def uniform_random(self):
         reader, book, i = random.choice(self.info['time'])[1]
         return self.data[reader][book][i]

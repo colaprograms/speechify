@@ -28,5 +28,6 @@ def imshow(buf):
     # rar
     import matplotlib
     import matplotlib.pyplot as p
+    p.figure(figsize=(20,100))
     p.imshow(buf, norm=matplotlib.colors.Normalize(0, 255))
     p.show()
