@@ -22,11 +22,20 @@ class Sampler:
     def whatev(self):
         pass
 
+def time(m):
+    sa = Sampler()
+    import time
+    start = time.time()
+    for i in range(m):
+        sa.rand()
+    return time.time() - start
+
 def imshow(buf):
     # rar
     # rar
     import matplotlib
     import matplotlib.pyplot as p
     p.figure(figsize=(20,100))
-    p.imshow(buf, norm=matplotlib.colors.Normalize(0, 255))
+    flat = numpy.concatenate([buf[:, :, i] for i in range(buf.shape[2])], axis=1)
+    p.imshow(flat, norm=matplotlib.colors.Normalize(0, 255))
     p.show()

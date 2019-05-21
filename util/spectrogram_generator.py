@@ -112,7 +112,8 @@ def spectrum_scale(spec, ran):
 
 def deltafeatures(spec_list, m, j=0):
     a, b, c = spec_list[j], spec_list[j+m], spec_list[j+2*m]
-    return numpy.concatenate((b, 2*(c-a), 2*a - 4*b + 2*c))
+    return b, 2*(c-a), 2*a - 4*b + 2*c
+    #return numpy.concatenate((b, 2*(c-a), 2*a - 4*b + 2*c))
 
 class generator:
     def __init__(self, params = None):
@@ -167,7 +168,7 @@ class generator:
             self.process()
         if len(R) < 2**m + 1:
             return None
-        ret = deltafeatures(R, m)
+        ret = numpy.concatenate(deltafeatures(R, m))
         R.pop(0)
         return ret
 
@@ -201,7 +202,7 @@ class whole_buffer:
         while self.run and len(R) < 2**self.params.m + 1:
             self.process()
         if self.run:
-            ret = deltafeatures(R, self.params.m)
+            ret = numpy.stack(deltafeatures(R, self.params.m), axis=1)
             R.pop(0)
             return ret
         return
