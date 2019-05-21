@@ -36,6 +36,7 @@ class LibriSpeech:
         pickle.dump([self.data, self.info], f)
 
     def make(self, path):
+        totaltime = 0
         for reader in listdir(path):
             readerint = int(reader)
             self.data[reader] = {}
@@ -63,19 +64,48 @@ class LibriSpeech:
                         'type': info.subtype,
                         'format': info.format
                     })
+                    totaltime += info.duration
                 # the transcript file should be over now
                 assert trans.readline().strip() == ""
+            print("Time: %f sec" % totaltime)
         cumulativetime = 0
-        time = []
-        for reader in self.data:
-            for book in self.data[reader]:
-                for i in range(len(self.data[reader][book])):
-                    time.append([cumulativetime, (reader, book, i)])
-                    cumulativetime += self.data[reader][book][i]['time']
-        self.info['time'] = time
+        for r in self.data.values():
+            for b in r.values():
+                for f in b:
+                    cumulativetime += f['time']
+        self.info['totaltime'] = cumulativetime
 
     def train_test_split(self):
+        # split readers worth about 10% of the time into a set
+        # LibriSpeech has a better testing set which is more careful
+        # not to overlap with the training set, but we want to
+        # reserve it for special occasions, so this is our validation set
+        limit = self.info['totaltime'] * 0.1
+        curtime = 0
+        candidates = list(self.data.keys())
+        random.shuffle(candidates)
+        for i in range(len(candidates)):
+            reader = candidates[i]
+            if curtime > limit:
+                break
+            for book in self.data[reader]:
+                for file in self.data[reader][book]:
+                    curtime += file['time']
+        print("%d testing candidates, total time %f sec" % (i, curtime))
+        def to_files(readerlist):
+            list = []
+            for reader in readerlist:
+                for book in self.data[reader]:
+                    for i in range(len(self.data[reader][book])):
+                        list.append([reader, book, i])
+            return list
+        self.info['test'] = to_files(candidates[:i])
+        self.info['train'] = to_files(candidates[i:])
 
-    def uniform_random(self):
-        reader, book, i = random.choice(self.info['time'])[1]
+    def uniform_test(self):
+        reader, book, i = random.choice(self.info['test'])
+        return self.data[reader][book][i]
+
+    def uniform_train(self):
+        reader, book, i = random.choice(self.info['train'])
         return self.data[reader][book][i]

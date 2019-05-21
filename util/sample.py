@@ -15,9 +15,8 @@ class Sampler:
         self.wb.params.spectrum_range = config.librispeech_range
     
     def rand(self):
-        file = self.ls.uniform_random()
-        path = join(self.path, file['path'])
-        buf, _ = sf.read(path)
+        file = self.ls.uniform_train() #file = self.ls.uniform_random()
+        buf, _ = sf.read(join(self.path, file['path']))
         return file, self.wb.all(buf)
     
     def whatev(self):
