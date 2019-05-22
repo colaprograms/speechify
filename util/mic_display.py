@@ -22,7 +22,7 @@ class MicrophoneDisplayer:
         self.img = numpy.zeros((self.imgwidth, self.height), dtype=numpy.uint8)
         # we are aiming for 15~20 ms per buffer
         if self.rate == 16000:
-            self.fftwidth = 512 # 16 ms
+            self.fftwidth = 1024 # 16 ms
         elif self.rate == 44100:
             self.fftwidth = 1024 # 11 ms
         else:

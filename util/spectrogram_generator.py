@@ -7,7 +7,7 @@ import scipy.signal
 from scipy import fftpack
 
 class Params:
-    def __init__(self, rate = 16000, buffer_length = 512, mel_width = 80,
+    def __init__(self, rate = 16000, buffer_length = 1024, mel_width = 160,
                  subdivisions = 4, m = 3, add_deltafeatures = True,
                  spectrum_range = None):
         self.rate = rate
@@ -48,11 +48,11 @@ class RawSoundBuffer:
 class Mangler:
     @staticmethod
     def f(z):
-        return numpy.exp(z) - 10
+        return numpy.exp(z) - 60
     
     @staticmethod
     def inv(z):
-        return numpy.log(z + 10)
+        return numpy.log(z + 60)
     
     @staticmethod
     def diff(z):
@@ -77,6 +77,30 @@ class Mangler:
         buf *= diff(z)
         buf = numpy.log10(buf + 1e-8)
         return buf
+    
+    @staticmethod
+    def integrated_mangle(buf, width):
+        f, inv, diff = Mangler.f, Mangler.inv, Mangler.diff
+        n = buf.shape[0]
+        
+        epsilon = 0.1
+        start = inv(1 + epsilon)
+        end = inv(n - 1 - epsilon)
+        z = numpy.linspace(start, end, width+1)
+        warp = f(z)
+        _floor = numpy.floor(warp).astype(int)
+        _frac = warp - _floor
+        def scale(z):
+            return (1 - _frac) * z[_floor] + _frac * z[_floor + 1]
+        def like_cumsum_but_from_the_right(z):
+            return -numpy.flip(numpy.cumsum(numpy.flip(buf)))
+        buf = buf.astype(numpy.float64)
+        buf = like_cumsum_but_from_the_right(buf)
+        buf = scale(buf)
+        buf = numpy.diff(buf)
+        buf = buf.astype(numpy.float32)
+        buf = numpy.log10(buf + 1e-8)
+        return buf
 
 def unitlinear(m):
     dot = m * (m+1) / (m-1) / 3
@@ -98,7 +122,9 @@ def signal_to_spectrogram(buf, win):
     return pow
     
 def signal_to_mel_spectrum(buf, win, width):
-    return Mangler.mangle(signal_to_spectrogram(buf, win), width)
+    return Mangler.integrated_mangle(signal_to_spectrogram(buf, win), width)
+    # rar
+    #return Mangler.mangle(signal_to_spectrogram(buf, win), width)
 
 def spectrum_scale(spec, ran):
     #bottom, top = numpy.percentile(spec, [10, 100])
@@ -112,7 +138,7 @@ def spectrum_scale(spec, ran):
 
 def deltafeatures(spec_list, m, j=0):
     a, b, c = spec_list[j], spec_list[j+m], spec_list[j+2*m]
-    return b, 2*(c-a), 2*a - 4*b + 2*c
+    return b, c-a, a - 2*b + c
     #return numpy.concatenate((b, 2*(c-a), 2*a - 4*b + 2*c))
 
 class generator:
