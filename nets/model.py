@@ -70,7 +70,7 @@ class initial_state(tf.keras.layers.Layer):
         return tf.broadcast_to(inputs, self.compute_output_shape(tf.shape(inputs)))
     
     def compute_output_shape(self, input_shape):
-        assert input_shape and len(input_shape) >= 2
+        assert len(input_shape) >= 2
         assert input_shape[-1]
         output_shape = list(input_shape)
         output_shape[-1] = self.units
