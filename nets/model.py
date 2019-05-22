@@ -46,7 +46,7 @@ class initial_state(tf.keras.layers.Layer):
             bias_initializer = "zeros",
             bias_regularizer = None,
             bias_constraint = None):
-        super(initial_state, self).__init__(**kwargs)
+        super(initial_state, self).__init__()
         self.units = units
         self.bias_initializer = tf.keras.initializers.get(bias_initializer)
         self.bias_regularizer = tf.keras.regularizers.get(bias_regularizer)
