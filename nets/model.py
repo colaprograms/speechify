@@ -220,18 +220,22 @@ class attend(tf.keras.Model):
     def call(self, secrets, speech_encode):
         """secrets: batch, len, vector
         speech_encode, batch, len, vector"""
-        hiddenstate = self.cell.get_initial_state()
+        hiddenstate = self.cell.get_initial_state(secrets)
         outputstate = []
         encodestate = self.Ua(speech_encode)
-        for ix in range(self.max_length):
+        for ix in range(tf.shape(secrets)[1]):
             state = self.Wa(hiddenstate[0])
-            attention_logits = self.va(tf.tanh(state + encodestate))
-            attention_weights = tf.softmax(attention_logits)
-            context = tf.tensordot(aij, speech_encode, [[0], [1]])
-            lstm_in = tf.concat([secrets[:, ix, :], context])
+            attention_logits = tf.reshape(self.va(tf.tanh(state + encodestate)), [-1])
+            attention_weights = tf.nn.softmax(attention_logits)
+            print(tf.shape(attention_weights))
+            print(tf.shape(speech_encode))
+            context = tf.tensordot(attention_weights,
+                    speech_encode,
+                    [[0], [1]])
+            lstm_in = tf.concat([secrets[:, ix, :], context], axis=1)
             lstmout, hiddenstate = self.cell(lstm_in, hiddenstate)
             outputstate.append(lstmout)
-        return outputstate
+        return tf.stack(outputstate, axis=1)
 
 class decoder(tf.keras.Model):
     def __init__(self):
@@ -243,6 +247,8 @@ class decoder(tf.keras.Model):
 
     def call(self, trans, speech_encode):
         secrets = self.embedding(trans)
+        print(tf.shape(secrets))
+        print(tf.shape(speech_encode))
         out = self.attends1(secrets, speech_encode)
         out = self.attends2(out, speech_encode)
         return out
