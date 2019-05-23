@@ -23,11 +23,13 @@ def bias_initializer_two(channels):
             tf.keras.initializers.Constant(2)((channels,), *args, **kwargs),
             tf.keras.initializers.Zeros((channels * 2,), *args, **kwargs),
         ], axis=0)
+    return f
 
 def LSTM(channels, **kwargs):
     args = dict(
         return_sequences = True,
-        bias_initializer = bias_initializer_two(channels)
+        unit_forget_bias = True
+        #bias_initializer = bias_initializer_two(channels)
     )
     args.update(kwargs)
     return tf.keras.layers.CuDNNLSTM(channels, **args)
@@ -67,7 +69,7 @@ class initial_state(tf.keras.layers.Layer):
         self.built = True
     
     def call(self, inputs):
-        return tf.broadcast_to(inputs, self.compute_output_shape(tf.shape(inputs)))
+        return self.bias
     
     def compute_output_shape(self, input_shape):
         assert len(input_shape) >= 2
@@ -136,11 +138,12 @@ class encoder(tf.keras.Model):
         self.conv4 = convblock(64, 2)
 
         self.flatten_spectrogram = Reshape((-1, 64 * WIDTH // 4))
+
+        def bias():
+            one = tf.keras.layers.Input((1,), name="bias_constant")
         
         def _lstm(size):
-            lstm = Bidirectional(LSTM(size))
-            var = initial_state(size)
-            return lambda z: lstm(z, initial_state = [var(z), var(z)])
+            return Bidirectional(LSTM(size))
         
         def _pyra(size):
             # I'm not sure what the paper means by "projection layer."
@@ -150,9 +153,9 @@ class encoder(tf.keras.Model):
             # twice the size by default, I think, so project all four
             # of those things down? Or two separate projections?
             def pyramids(zz):
-                pads = tf.constant([[0, 0],
-                                    [0, tf.floormod(tf.shape(zz)[0], 2)], # padded along height axis
-                                    [0, 0]])
+                pads = [[0, 0],
+                        [0, tf.floormod(tf.shape(zz)[1], 2)], # padded along height axis
+                        [0, 0]]
                 zz = tf.pad(zz, pads, "CONSTANT")
                 zz = tf.concat([zz[:, ::2, :], zz[:, 1::2, :]], -1)
                 return zz
@@ -180,15 +183,15 @@ class encoder(tf.keras.Model):
         
         zz = self.flatten_spectrogram(zz)
         
-        zz, _ = self.lstm1(zz)
+        zz = self.lstm1(zz)
         zz = self.pyra1(zz)
         zz = self.drop1(zz)
         
-        zz, _ = self.lstm2(zz)
+        zz = self.lstm2(zz)
         zz = self.pyra2(zz)
         zz = self.drop2(zz)
         
-        zz, _ = self.lstm3(zz)
+        zz = self.lstm3(zz)
         zz = self.pyra3(zz)
         zz = self.drop3(zz)
         
@@ -197,3 +200,7 @@ class encoder(tf.keras.Model):
 
     def initialize_hidden_state(self, bsiz):
         pass
+
+class decoder(tf.keras.Model):
+    def __init__(self):
+        tf.keras.Model.__init__(self)
