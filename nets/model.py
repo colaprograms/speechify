@@ -31,7 +31,14 @@ def LSTM(channels, **kwargs):
     args.update(kwargs)
     return tf.keras.layers.CuDNNLSTM(channels, **args)
 
-     
+def LSTMCell(channels, **kwargs):
+    args = dict(
+        recurrent_activation = "sigmoid",
+        unit_forget_bias = True
+    )
+    args.update(kwargs)
+    return tf.keras.layers.LSTMCell(channels, **args)
+ 
 from tensorflow.keras.layers import BatchNormalization, \
                             LeakyReLU, \
                             GlobalAveragePooling2D, \
@@ -196,13 +203,46 @@ class encoder(tf.keras.Model):
     def initialize_hidden_state(self, bsiz):
         pass
 
+class attend(tf.keras.Model):
+    def __init__(self, units, max_length):
+        super(attend, self).__init__()
+        self.units = units
+        self.maxlength = max_length
+        """Bahdanau attention:
+        e_{ij} = v_a^T tanh(W_a s_{i-1} + U_a h_j)
+        \alpha_{ij} = exp(e_{ij}) / \sum_j exp(e_{ij})
+        """
+        self.Wa = Dense(self.units)
+        self.Ua = Dense(self.units)
+        self.va = Dense(1)
+        self.cell = LSTMCell(units)
+
+    def call(self, secrets, speech_encode):
+        """secrets: batch, len, vector
+        speech_encode, batch, len, vector"""
+        hiddenstate = self.cell.get_initial_state()
+        outputstate = []
+        encodestate = self.Ua(speech_encode)
+        for ix in range(self.max_length):
+            state = self.Wa(hiddenstate[0])
+            attention_logits = self.va(tf.tanh(state + encodestate))
+            attention_weights = tf.softmax(attention_logits)
+            context = tf.tensordot(aij, speech_encode, [[0], [1]])
+            lstm_in = tf.concat([secrets[:, ix, :], context])
+            lstmout, hiddenstate = self.cell(lstm_in, hiddenstate)
+            outputstate.append(lstmout)
+        return outputstate
+
 class decoder(tf.keras.Model):
     def __init__(self):
         tf.keras.Model.__init__(self)
+        self.units = 256
+        self.embedding = Dense(self.units)
+        self.attends1 = attend(256, 256)
+        self.attends2 = attend(256, 256)
 
-        self.lstm1 = LSTM(256)
-
-    def call(self, speech_encode, trans):
-        attended_speech_encoding = self.attention(speech_encode)
-        trans = self.embedding(trans)
-        return self.lstm1(tf.concat([attended_speech_encoding, trans]))
+    def call(self, trans, speech_encode):
+        secrets = self.embedding(trans)
+        out = self.attends1(secrets, speech_encode)
+        out = self.attends2(out, speech_encode)
+        return out
