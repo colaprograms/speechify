@@ -33,6 +33,34 @@ def LSTM(channels, **kwargs):
     )
     args.update(kwargs)
     return tf.keras.layers.CuDNNLSTM(channels, **args)
+
+def _lstm(size):
+    return Bidirectional(LSTM(size))
+
+def _pyra(size):
+    # I'm not sure what the paper means by "projection layer."
+    # Zhang et al has a thing where they staple two adjacent
+    # frames together and project it down.
+    # On the other hand, the Bidirectional layer also returns
+    # twice the size by default, I think, so project all four
+    # of those things down? Or two separate projections?
+    def pyramids(zz):
+        pads = [[0, 0],
+                [0, tf.floormod(tf.shape(zz)[1], 2)], # padded along height axis
+                [0, 0]]
+        zz = tf.pad(zz, pads, "CONSTANT")
+        zz = tf.concat([zz[:, ::2, :], zz[:, 1::2, :]], -1)
+        return zz
+    proj = Dense(size)
+    batc = BatchNormalization()
+    def fn(buf):
+        return batc(proj(pyramids(buf)))
+    return fn
+    
+self.lstm1 = _lstm(256)
+self.pyra1 = _pyra(256)
+self.drop1 = Dropout(0.1)
+
      
 from tensorflow.keras.layers import BatchNormalization, \
                             LeakyReLU, \
@@ -139,35 +167,7 @@ class encoder(tf.keras.Model):
 
         self.flatten_spectrogram = Reshape((-1, 64 * WIDTH // 4))
 
-        def bias():
-            one = tf.keras.layers.Input((1,), name="bias_constant")
         
-        def _lstm(size):
-            return Bidirectional(LSTM(size))
-        
-        def _pyra(size):
-            # I'm not sure what the paper means by "projection layer."
-            # Zhang et al has a thing where they staple two adjacent
-            # frames together and project it down.
-            # On the other hand, the Bidirectional layer also returns
-            # twice the size by default, I think, so project all four
-            # of those things down? Or two separate projections?
-            def pyramids(zz):
-                pads = [[0, 0],
-                        [0, tf.floormod(tf.shape(zz)[1], 2)], # padded along height axis
-                        [0, 0]]
-                zz = tf.pad(zz, pads, "CONSTANT")
-                zz = tf.concat([zz[:, ::2, :], zz[:, 1::2, :]], -1)
-                return zz
-            proj = Dense(size)
-            batc = BatchNormalization()
-            def fn(buf):
-                return batc(proj(pyramids(buf)))
-            return fn
-            
-        self.lstm1 = _lstm(256)
-        self.pyra1 = _pyra(256)
-        self.drop1 = Dropout(0.1)
         
         self.lstm2 = _lstm(256)
         self.pyra2 = _pyra(256)
@@ -204,3 +204,21 @@ class encoder(tf.keras.Model):
 class decoder(tf.keras.Model):
     def __init__(self):
         tf.keras.Model.__init__(self)
+
+        self.lstm1 = LSTM(256)
+        self.drop1 = Dropout(0.1)
+
+        self.lstm2 = LSTM(256)
+        self.drop2 = Dropout(0.1)
+
+        self.lstm3 = LSTM(256)
+        self.drop3 = Dropout(0.1)
+
+    def call(self, zz):
+        # i also need to stick in the actual transcript here somewhere
+        attention_of_some_kind()
+        for fn in [self.lstm1, self.drop1,
+                   self.lstm2, self.drop2,
+                   self.lstm3, self.drop3]:
+            zz = fn(zz)
+        return zz
