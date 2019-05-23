@@ -17,22 +17,29 @@ def bias_initializer_two(channels):
     """This bias initializer has more or less the effect of unit_forget_bias,
     but the starting bias is two, not just one.
     Hopefully this will help with very-long-term memory."""
-    def f(_, *args, **kwargs):
-        return array_ops.concat([
-            tf.keras.initializers.Zeros((channels * 5,), *args, **kwargs),
-            tf.keras.initializers.Constant(2)((channels,), *args, **kwargs),
-            tf.keras.initializers.Zeros((channels * 2,), *args, **kwargs),
-        ], axis=0)
+    return tf.constant_initializer(
+            [0] * (channels*5) + [2] * channels + [0] * (channels*2)
+    )
     return f
 
 def LSTM(channels, **kwargs):
     args = dict(
         return_sequences = True,
-        unit_forget_bias = True
-        #bias_initializer = bias_initializer_two(channels)
+        unit_forget_bias = False,
+        bias_initializer = bias_initializer_two(channels)
     )
     args.update(kwargs)
     return tf.keras.layers.CuDNNLSTM(channels, **args)
+
+     
+from tensorflow.keras.layers import BatchNormalization, \
+                            LeakyReLU, \
+                            GlobalAveragePooling2D, \
+                            Dense, \
+                            Reshape, \
+                            Dropout, \
+                            Bidirectional
+from tensorflow.keras import Sequential
 
 def _lstm(size):
     return Bidirectional(LSTM(size))
@@ -56,20 +63,6 @@ def _pyra(size):
     def fn(buf):
         return batc(proj(pyramids(buf)))
     return fn
-    
-self.lstm1 = _lstm(256)
-self.pyra1 = _pyra(256)
-self.drop1 = Dropout(0.1)
-
-     
-from tensorflow.keras.layers import BatchNormalization, \
-                            LeakyReLU, \
-                            GlobalAveragePooling2D, \
-                            Dense, \
-                            Reshape, \
-                            Dropout, \
-                            Bidirectional
-from tensorflow.keras import Sequential
 
 class initial_state(tf.keras.layers.Layer):
     def __init__(self, units,
@@ -167,7 +160,9 @@ class encoder(tf.keras.Model):
 
         self.flatten_spectrogram = Reshape((-1, 64 * WIDTH // 4))
 
-        
+        self.lstm1 = _lstm(256)
+        self.pyra1 = _pyra(256)
+        self.drop1 = Dropout(0.1)
         
         self.lstm2 = _lstm(256)
         self.pyra2 = _pyra(256)
@@ -206,19 +201,8 @@ class decoder(tf.keras.Model):
         tf.keras.Model.__init__(self)
 
         self.lstm1 = LSTM(256)
-        self.drop1 = Dropout(0.1)
 
-        self.lstm2 = LSTM(256)
-        self.drop2 = Dropout(0.1)
-
-        self.lstm3 = LSTM(256)
-        self.drop3 = Dropout(0.1)
-
-    def call(self, zz):
-        # i also need to stick in the actual transcript here somewhere
-        attention_of_some_kind()
-        for fn in [self.lstm1, self.drop1,
-                   self.lstm2, self.drop2,
-                   self.lstm3, self.drop3]:
-            zz = fn(zz)
-        return zz
+    def call(self, speech_encode, trans):
+        attended_speech_encoding = self.attention(speech_encode)
+        trans = self.embedding(trans)
+        return self.lstm1(tf.concat([attended_speech_encoding, trans]))
