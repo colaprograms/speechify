@@ -204,6 +204,32 @@ class encoder(tf.keras.layers.Layer):
     def initialize_hidden_state(self, bsiz):
         pass
 
+class AttentionCell(tf.keras.layers.Layer):
+    def __init__(self, units):
+        super(AttentionCell, self).__init__()
+        self.units = units
+        self.Wa = Dense(self.units)
+        self.va = Dense(1)
+        self.cell = LSTMCell(units)
+        self.state_size = [units, units] # atashi iya ne
+    
+    def build(self, input_shape):
+        self.built = True
+        
+    def call(self, inputs, states, constants):
+        speech_encode, encodestate = constants
+        state = self.Wa(states[0])
+        attention_logits = tf.reshape(self.va(tf.tanh(state + encodestate)), [-1])
+        attention_weights = tf.nn.softmax(attention_logits)
+        context = tf.tensordot(attention_weights,
+            speech_encode, [[0], [1]])
+        lstm_in = tf.concat([inputs, context], axis=1)
+        print("lstm_in:", lstm_in)
+        print("states:", states)
+        lstmout, hiddenstate = self.cell(lstm_in, states)
+        print(hiddenstate)
+        return lstmout, hiddenstate
+            
 class attend(tf.keras.layers.Layer):
     def __init__(self, units, max_length):
         super(attend, self).__init__()
@@ -213,44 +239,15 @@ class attend(tf.keras.layers.Layer):
         e_{ij} = v_a^T tanh(W_a s_{i-1} + U_a h_j)
         \alpha_{ij} = exp(e_{ij}) / \sum_j exp(e_{ij})
         """
-        self.Wa = Dense(self.units)
         self.Ua = Dense(self.units)
-        self.va = Dense(1)
-        self.cell = LSTMCell(units)
+        self.cell = tf.keras.layers.RNN(AttentionCell(units),
+            return_sequences = True)
 
     def call(self, inputs):
         secrets, speech_encode = inputs
-        """secrets: batch, len, vector
-        speech_encode, batch, len, vector"""
-        print(tf.shape(secrets))
-        hiddenstate = self.cell.get_initial_state(secrets)
-        outputstate = tf.TensorArray(tf.float32, 0, dynamic_size=True)
         encodestate = self.Ua(speech_encode)
-        ix = tf.constant(0)
-        def lessthan(ix, hiddenstate, outputstate):
-            return tf.less(ix, tf.shape(secrets)[1])
-        def body(ix, hiddenstate, outputstate):
-            state = self.Wa(hiddenstate[0])
-            attention_logits = tf.reshape(self.va(tf.tanh(state + encodestate)), [-1])
-            attention_weights = tf.nn.softmax(attention_logits)
-            #print(tf.shape(attention_weights))
-            #print(tf.shape(speech_encode))
-            context = tf.tensordot(attention_weights,
-                    speech_encode,
-                    [[0], [1]])
-            #print(tf.shape(context))
-            #print(tf.shape(secrets[:, ix, :]))
-            lstm_in = tf.concat([secrets[:, ix, :], context], axis=1)
-            lstmout, hiddenstate = self.cell(lstm_in, hiddenstate)
-            outputstate.write(ix, lstmout)
-            return [tf.add(ix, 1), hiddenstate, outputstate]
-        tf.while_loop(lessthan, body, [ix, hiddenstate, outputstate],
-                      parallel_iterations = 1)
-        output = tf.transpose(outputstate.stack(), [1, 0, 2])
-        print(tf.shape(output))
-        return output
-        #return tf.stack(outputstate, axis=1)
-
+        return self.cell(secrets, constants=(speech_encode, encodestate))
+        
 class decoder(tf.keras.layers.Layer):
     def __init__(self):
         tf.keras.layers.Layer.__init__(self)
@@ -259,17 +256,14 @@ class decoder(tf.keras.layers.Layer):
         self.attends1 = attend(256, 256)
         self.attends2 = attend(256, 256)
         self.distrib = Dense(nchars)
-        self.whatever1 = Dense(256)
-        self.whatever2 = Dense(256)
         
     def call(self, inputs):
         trans, speech_encode = inputs
         secrets = self.embedding(trans)
         print(tf.shape(secrets))
         print(tf.shape(speech_encode))
-        #out = self.attends1([secrets, speech_encode])
-        #out = self.attends2([out, speech_encode])
-        out = self.whatever1(secrets) + self.whatever2(speech_encode)
+        out = self.attends1([secrets, speech_encode])
+        out = self.attends2([out, speech_encode])
         out = self.distrib(out)
         out = tf.nn.softmax(out)
         return out

@@ -44,7 +44,8 @@ def _create(get, start, end):
         bufmatrix[i, :buf.shape[0], :, :] = bufmixer.mixer(buf)
     longest_trans += 1 + ENDPAD
     transmatrix = numpy.zeros((len(transs), longest_trans, onehot.nchars))
-    transoffset = numpy.zeros_like(transmatrix)
+    transoffset = numpy.zeros((len(transs), longest_trans, onehot.nchars))
+    #transoffset = numpy.zeros_like(transmatrix)
     for i, trans in enumerate(transs):
         trans = "@" + trans + "$" * (longest_trans - len(trans) - 1)
         for j, c in enumerate(trans):
@@ -154,8 +155,8 @@ def train():
     samp = LibriSequence()
     model.fit_generator(
         samp.sequence("train"),
-        steps_per_epoch = 1000,
-        epochs = 10,
+        steps_per_epoch = 1,
+        epochs = 1,
         verbose = 2,
         validation_data = samp.sequence("test"),
         validation_steps = 10,
