@@ -240,4 +240,7 @@ class whole_buffer:
             z = self.next()
             if z is not None:
                 out.append(z)
-        return numpy.stack(out)
+        if len(out) > 0:
+            return numpy.stack(out)
+        else:
+            raise Exception("problem:" + str(buf.shape))

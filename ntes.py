@@ -3,9 +3,9 @@ import numpy as np
 import nets.model
 import nets.main
 
-tf.enable_eager_execution()
-
-nets.main.train()
+if __name__ == "__main__":
+    tf.enable_eager_execution()
+    nets.main.train()
 
 """sa = Sampler()
 file, buf = sa.rand()

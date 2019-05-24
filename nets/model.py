@@ -2,7 +2,8 @@ import tensorflow as tf
 import numpy as np
 #from tensorflow.keras.layers import * #Bidirectional, CuDNNLSTM, Conv2D, Dense, \
         #Embedding, Concatenate, LeakyReLU, BatchNormalization
-
+from util.onehot import nchars
+        
 def Conv2D(m, kernel_size, strides=1, **kwargs):
     args = {
         'padding': "same",
@@ -18,7 +19,7 @@ def bias_initializer_two(channels):
     but the starting bias is two, not just one.
     Hopefully this will help with very-long-term memory."""
     return tf.constant_initializer(
-            [0] * (channels*5) + [2] * channels + [0] * (channels*2)
+            [0.0] * (channels*5) + [2.0] * channels + [0.0] * (channels*2)
     )
     return f
 
@@ -59,10 +60,10 @@ def _pyra(size):
     # twice the size by default, I think, so project all four
     # of those things down? Or two separate projections?
     def pyramids(zz):
-        pads = [[0, 0],
-                [0, tf.floormod(tf.shape(zz)[1], 2)], # padded along height axis
-                [0, 0]]
-        zz = tf.pad(zz, pads, "CONSTANT")
+        #pads = [[0, 0],
+        #        [0, tf.floormod(tf.shape(zz)[1], 2)], # padded along height axis
+        #        [0, 0]]
+        #zz = tf.pad(zz, pads, "CONSTANT")
         zz = tf.concat([zz[:, ::2, :], zz[:, 1::2, :]], -1)
         return zz
     proj = Dense(size)
@@ -217,13 +218,18 @@ class attend(tf.keras.layers.Layer):
         self.va = Dense(1)
         self.cell = LSTMCell(units)
 
-    def call(self, secrets, speech_encode):
+    def call(self, inputs):
+        secrets, speech_encode = inputs
         """secrets: batch, len, vector
         speech_encode, batch, len, vector"""
+        print(tf.shape(secrets))
         hiddenstate = self.cell.get_initial_state(secrets)
-        outputstate = []
+        outputstate = tf.TensorArray(tf.float32, 0, dynamic_size=True)
         encodestate = self.Ua(speech_encode)
-        for ix in range(tf.shape(secrets)[1]):
+        ix = tf.constant(0)
+        def lessthan(ix, hiddenstate, outputstate):
+            return tf.less(ix, tf.shape(secrets)[1])
+        def body(ix, hiddenstate, outputstate):
             state = self.Wa(hiddenstate[0])
             attention_logits = tf.reshape(self.va(tf.tanh(state + encodestate)), [-1])
             attention_weights = tf.nn.softmax(attention_logits)
@@ -232,10 +238,17 @@ class attend(tf.keras.layers.Layer):
             context = tf.tensordot(attention_weights,
                     speech_encode,
                     [[0], [1]])
+            #print(tf.shape(context))
+            #print(tf.shape(secrets[:, ix, :]))
             lstm_in = tf.concat([secrets[:, ix, :], context], axis=1)
             lstmout, hiddenstate = self.cell(lstm_in, hiddenstate)
-            outputstate.append(lstmout)
-        return tf.stack(outputstate, axis=1)
+            outputstate.write(ix, lstmout)
+            return [ix, hiddenstate, outputstate]
+        tf.while_loop(lessthan, body, [ix, hiddenstate, outputstate])
+        output = tf.transpose(outputstate.stack(), [1, 0, 2])
+        print(tf.shape(output))
+        return output
+        #return tf.stack(outputstate, axis=1)
 
 class decoder(tf.keras.layers.Layer):
     def __init__(self):
@@ -244,13 +257,16 @@ class decoder(tf.keras.layers.Layer):
         self.embedding = Dense(self.units)
         self.attends1 = attend(256, 256)
         self.attends2 = attend(256, 256)
-
-    def call(self, trans, speech_encode):
+        self.distrib = Dense(nchars)
+        
+    def call(self, inputs):
+        trans, speech_encode = inputs
         secrets = self.embedding(trans)
         print(tf.shape(secrets))
         print(tf.shape(speech_encode))
-        out = self.attends1(secrets, speech_encode)
-        out = self.attends2(out, speech_encode)
+        out = self.attends1([secrets, speech_encode])
+        out = self.attends2([out, speech_encode])
+        out = self.distrib(out)
         return out
 
 class EncoderDecoder(tf.keras.Model):
@@ -261,7 +277,7 @@ class EncoderDecoder(tf.keras.Model):
     
     def call(self, spectrum, transcript):
         speech_encode = self.enc(spectrum)
-        return self.dec(transcript, speech_encode)
+        return self.dec([transcript, speech_encode])
     
     def loss(self, transcript, decode):
         pass

@@ -101,7 +101,11 @@ class LibriSpeech:
             return list
         self.info['test'] = to_files(candidates[:i])
         self.info['train'] = to_files(candidates[i:])
-
+        def f(z):
+            z.sort(key = lambda z: z.file['time'])
+        f(self.info['test'])
+        f(self.info['train'])
+        
     def uniform_test(self):
         reader, book, i = random.choice(self.info['test'])
         return self.data[reader][book][i]
