@@ -26,8 +26,8 @@ def bias_initializer_two(channels):
 def LSTM(channels, **kwargs):
     args = dict(
         return_sequences = True,
-        unit_forget_bias = False,
-        bias_initializer = bias_initializer_two(channels)
+        unit_forget_bias = True,#False,
+        #bias_initializer = bias_initializer_two(channels)
     )
     args.update(kwargs)
     return tf.keras.layers.CuDNNLSTM(channels, **args)
@@ -243,8 +243,9 @@ class attend(tf.keras.layers.Layer):
             lstm_in = tf.concat([secrets[:, ix, :], context], axis=1)
             lstmout, hiddenstate = self.cell(lstm_in, hiddenstate)
             outputstate.write(ix, lstmout)
-            return [ix, hiddenstate, outputstate]
-        tf.while_loop(lessthan, body, [ix, hiddenstate, outputstate])
+            return [tf.add(ix, 1), hiddenstate, outputstate]
+        tf.while_loop(lessthan, body, [ix, hiddenstate, outputstate],
+                      parallel_iterations = 1)
         output = tf.transpose(outputstate.stack(), [1, 0, 2])
         print(tf.shape(output))
         return output
@@ -258,15 +259,19 @@ class decoder(tf.keras.layers.Layer):
         self.attends1 = attend(256, 256)
         self.attends2 = attend(256, 256)
         self.distrib = Dense(nchars)
+        self.whatever1 = Dense(256)
+        self.whatever2 = Dense(256)
         
     def call(self, inputs):
         trans, speech_encode = inputs
         secrets = self.embedding(trans)
         print(tf.shape(secrets))
         print(tf.shape(speech_encode))
-        out = self.attends1([secrets, speech_encode])
-        out = self.attends2([out, speech_encode])
+        #out = self.attends1([secrets, speech_encode])
+        #out = self.attends2([out, speech_encode])
+        out = self.whatever1(secrets) + self.whatever2(speech_encode)
         out = self.distrib(out)
+        out = tf.nn.softmax(out)
         return out
 
 class EncoderDecoder(tf.keras.Model):

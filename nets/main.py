@@ -147,7 +147,8 @@ def train():
     spectrum = tf.keras.layers.Input((None, 160, 9))
     transcript = tf.keras.layers.Input((None, len(onehot.chars)))
     decode = encdec(spectrum, transcript)
-    model = tf.keras.models.Model([spectrum, transcript], [decode])
+    #decode = tf.nn.softmax(decode)
+    model = tf.keras.models.Model([spectrum, transcript], decode)
     model.compile(optimizer=tf.keras.optimizers.SGD(lr=0.001, momentum=0.9, decay=0, nesterov=True),
                   loss = 'categorical_crossentropy')
     samp = LibriSequence()
@@ -157,6 +158,6 @@ def train():
         epochs = 10,
         verbose = 2,
         validation_data = samp.sequence("test"),
-        validation_steps = 1,
+        validation_steps = 10,
         workers = 1
     )
