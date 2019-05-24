@@ -1,6 +1,7 @@
 import numpy as np
 
 chars = " ABCDEFGHIJKLMNOPQRSTUVWXYZ'@$"
+nchars = len(chars)
 # @ is start token, $ is end token
 char = {}
 idx = {}

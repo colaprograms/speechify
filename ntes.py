@@ -1,11 +1,15 @@
-from util.sample import Sampler
 import tensorflow as tf
 import numpy as np
+import nets.model
+import nets.main
 
 tf.enable_eager_execution()
 
-sa = Sampler()
+nets.main.train()
+
+"""sa = Sampler()
 file, buf = sa.rand()
+print(file)
 t = tf.convert_to_tensor(buf.reshape((1,) + buf.shape).astype(np.float32))
 
 import nets.model
@@ -14,3 +18,4 @@ en = nets.model.encoder()
 t = en(t)
 t = de(t, t)
 print(t)
+"""

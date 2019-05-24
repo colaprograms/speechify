@@ -117,7 +117,7 @@ class initial_state(tf.keras.layers.Layer):
         base_config.update(config)
         return base_config
             
-class convblock(tf.keras.Model):
+class convblock(tf.keras.layers.Layer):
     def __init__(self, channels, stride=1):
         super(convblock, self).__init__()
         self.conv0 = Conv2D(channels, 1, stride)
@@ -151,7 +151,7 @@ class convblock(tf.keras.Model):
         out = self.act2(out)
         return tf.keras.layers.add([shortcut, out])
         
-class encoder(tf.keras.Model):
+class encoder(tf.keras.layers.Layer):
     def __init__(self):
         super(encoder, self).__init__()
         # Different parts of the mel spectrum act differently,
@@ -168,7 +168,7 @@ class encoder(tf.keras.Model):
         self.flatten_spectrogram = Reshape((-1, 64 * WIDTH // 4))
 
         self.lstm1 = _lstm(256)
-        self.pyra1 = _pyra(256)
+        #self.pyra1 = _pyra(256)
         self.drop1 = Dropout(0.1)
         
         self.lstm2 = _lstm(256)
@@ -186,7 +186,7 @@ class encoder(tf.keras.Model):
         zz = self.flatten_spectrogram(zz)
         
         zz = self.lstm1(zz)
-        zz = self.pyra1(zz)
+        #zz = self.pyra1(zz)
         zz = self.drop1(zz)
         
         zz = self.lstm2(zz)
@@ -203,7 +203,7 @@ class encoder(tf.keras.Model):
     def initialize_hidden_state(self, bsiz):
         pass
 
-class attend(tf.keras.Model):
+class attend(tf.keras.layers.Layer):
     def __init__(self, units, max_length):
         super(attend, self).__init__()
         self.units = units
@@ -227,8 +227,8 @@ class attend(tf.keras.Model):
             state = self.Wa(hiddenstate[0])
             attention_logits = tf.reshape(self.va(tf.tanh(state + encodestate)), [-1])
             attention_weights = tf.nn.softmax(attention_logits)
-            print(tf.shape(attention_weights))
-            print(tf.shape(speech_encode))
+            #print(tf.shape(attention_weights))
+            #print(tf.shape(speech_encode))
             context = tf.tensordot(attention_weights,
                     speech_encode,
                     [[0], [1]])
@@ -237,9 +237,9 @@ class attend(tf.keras.Model):
             outputstate.append(lstmout)
         return tf.stack(outputstate, axis=1)
 
-class decoder(tf.keras.Model):
+class decoder(tf.keras.layers.Layer):
     def __init__(self):
-        tf.keras.Model.__init__(self)
+        tf.keras.layers.Layer.__init__(self)
         self.units = 256
         self.embedding = Dense(self.units)
         self.attends1 = attend(256, 256)
@@ -252,3 +252,16 @@ class decoder(tf.keras.Model):
         out = self.attends1(secrets, speech_encode)
         out = self.attends2(out, speech_encode)
         return out
+
+class EncoderDecoder(tf.keras.Model):
+    def __init__(self):
+        super(EncoderDecoder, self).__init__()
+        self.enc = encoder()
+        self.dec = decoder()
+    
+    def call(self, spectrum, transcript):
+        speech_encode = self.enc(spectrum)
+        return self.dec(transcript, speech_encode)
+    
+    def loss(self, transcript, decode):
+        pass
