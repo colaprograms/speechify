@@ -219,13 +219,13 @@ class AttentionCell(tf.keras.layers.Layer):
     def call(self, inputs, states, constants):
         speech_encode, encodestate = constants
         state = self.Wa(states[0])
-        attention_logits = tf.reshape(self.va(tf.tanh(state + encodestate)), [-1])
+        state = tf.expand_dims(state, axis=1)
+        attentions = self.va(tf.tanh(state + encodestate))
+        attention_logits = tf.squeeze(attentions, axis=2)
         attention_weights = tf.nn.softmax(attention_logits)
-        context = tf.tensordot(attention_weights,
-            speech_encode, [[0], [1]])
+        context = tf.einsum('ai,aij->aj',
+                attention_weights, speech_encode)
         lstm_in = tf.concat([inputs, context], axis=1)
-        print("lstm_in:", lstm_in)
-        print("states:", states)
         lstmout, hiddenstate = self.cell(lstm_in, states)
         print(hiddenstate)
         return lstmout, hiddenstate

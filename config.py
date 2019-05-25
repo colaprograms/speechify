@@ -1,6 +1,6 @@
 # Configuration
 
-place = "sandbox"
+place = "home"
 #place = "home"
 
 if place == "sandbox":

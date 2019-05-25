@@ -190,19 +190,25 @@ class generator:
     def next_deltafeatures(self):
         m = self.params.m
         R = self.raw_spectrum_buffer
-        if len(R) < 2**m + 1:
+        if len(R) < 2*m + 1:
             self.process()
-        if len(R) < 2**m + 1:
+        if len(R) < 2*m + 1:
             return None
         ret = numpy.concatenate(deltafeatures(R, m))
         R.pop(0)
         return ret
 
+windowcache = {}
+def _window(len):
+    if len not in windowcache:
+        windowcache[len] = scipy.signal.get_window("hann", len, True)
+    return windowcache[len]
+
 class whole_buffer:
     def __init__(self, params = None):
         self.params = params or Params()
         self.buflen = self.params.buffer_length
-        self.win = scipy.signal.get_window("hann", self.buflen, True)
+        self.win = _window(self.params.buffer_length)
         self.run = False
         
     def set(self, buf):
@@ -225,7 +231,7 @@ class whole_buffer:
     
     def next(self):
         R = self.raw_spectrum_buffer
-        while self.run and len(R) < 2**self.params.m + 1:
+        while self.run and len(R) < 2*self.params.m + 1:
             self.process()
         if self.run:
             ret = numpy.stack(deltafeatures(R, self.params.m), axis=1)
@@ -243,4 +249,4 @@ class whole_buffer:
         if len(out) > 0:
             return numpy.stack(out)
         else:
-            raise Exception("problem:" + str(buf.shape))
+            raise Exception("problem: " + str(buf.shape))

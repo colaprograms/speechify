@@ -24,7 +24,7 @@ class bufmixer:
                                   buf * bufmixer.bufmixer2], axis=2)
 
 ENDPAD = 6
-BUFPAD = 4
+BUFPAD = 16
 
 def _create(get, start, end):
     bufs = []
@@ -67,7 +67,7 @@ class SequenceFromLibriSpeech(tf.keras.utils.Sequence):
     def __getitem__(self, idx):
         start = idx * self.batchsize
         end = min((idx + 1) * self.batchsize, len(self.data))
-        print("returning batch %d %d" % (start, end))
+        #print("returning batch %d %d" % (start, end))
         retval = _create(self.get, start, end)
         return retval
         
@@ -76,9 +76,7 @@ class LibriSequence:
         self.path = config.path
         self.ls = LibriSpeech()
         self.ls.load()
-        self.wb = whole_buffer()
-        self.wb.params.spectrum_range = config.librispeech_range
-        self.batchsize = 32
+        self.batchsize = 4
     
     def sequence(self, type="train"):
         def get(ix):
@@ -86,8 +84,9 @@ class LibriSequence:
             file = self.ls.data[reader][book][i]
             buf, _ = sf.read(join(self.path, file['path']))
             trans = file['trans']
-            print("buffer shape", buf.shape)
-            return trans, self.wb.all(buf)
+            wb = whole_buffer()
+            wb.params.spectrum_range = config.librispeech_range
+            return trans, wb.all(buf)
         return SequenceFromLibriSpeech(self.ls.info['train'], self.batchsize, get)
 
 """
@@ -151,14 +150,15 @@ def train():
     #decode = tf.nn.softmax(decode)
     model = tf.keras.models.Model([spectrum, transcript], decode)
     model.compile(optimizer=tf.keras.optimizers.SGD(lr=0.001, momentum=0.9, decay=0, nesterov=True),
-                  loss = 'categorical_crossentropy')
+                  loss = 'categorical_crossentropy',
+                  metrics = ['accuracy'])
     samp = LibriSequence()
     model.fit_generator(
         samp.sequence("train"),
-        steps_per_epoch = 1,
-        epochs = 1,
-        verbose = 2,
+        steps_per_epoch = 1000,
+        epochs = 10,
+        verbose = 1,
         validation_data = samp.sequence("test"),
         validation_steps = 10,
-        workers = 1
+        workers = 4, shuffle=False
     )
