@@ -22,19 +22,12 @@ def bias_initializer_two(channels):
             [0.0] * (channels*5) + [2.0] * channels + [0.0] * (channels*2)
     )
     return f
-def bias_initializer_two_cell(channels):
-    """This bias initializer has more or less the effect of unit_forget_bias,
-    but the starting bias is two, not just one.
-    Hopefully this will help with very-long-term memory."""
-    return tf.constant_initializer(
-            [0.0] * (channels) + [2.0] * channels + [0.0] * (channels*2)
-    )
-    return f
 
 def LSTM(channels, **kwargs):
     args = dict(
         return_sequences = True,
-        unit_forget_bias = False, bias_initializer = bias_initializer_two(channels)
+        unit_forget_bias = True,#False,
+        #bias_initializer = bias_initializer_two(channels)
     )
     args.update(kwargs)
     return tf.keras.layers.CuDNNLSTM(channels, **args)
@@ -42,7 +35,7 @@ def LSTM(channels, **kwargs):
 def LSTMCell(channels, **kwargs):
     args = dict(
         recurrent_activation = "sigmoid",
-        unit_forget_bias = False, bias_initializer = bias_initializer_two_cell(channels)
+        unit_forget_bias = True
     )
     args.update(kwargs)
     return tf.keras.layers.LSTMCell(channels, **args)
@@ -78,9 +71,6 @@ def _pyra(size):
     def fn(buf):
         return batc(proj(pyramids(buf)))
     return fn
-
-def whatever_norm(z):
-    return tf.contrib.layers.layer_norm(z, center=False, scale=False)
 
 class initial_state(tf.keras.layers.Layer):
     def __init__(self, units,
@@ -133,7 +123,7 @@ class convblock(tf.keras.layers.Layer):
         super(convblock, self).__init__()
         self.conv0 = Conv2D(channels, 1, stride)
         self.conv1 = Conv2D(channels, 3, stride)
-        #self.bn1 = BatchNormalization(axis=3)
+        self.bn1 = BatchNormalization(axis=3)
         self.act1 = LeakyReLU()
         self.conv2 = Conv2D(channels, 3)
         
@@ -144,7 +134,7 @@ class convblock(tf.keras.layers.Layer):
             Dense(channels, activation='sigmoid', kernel_initializer='he_normal')
         ])
         
-        #self.bn2 = BatchNormalization(axis=3)
+        self.bn2 = BatchNormalization(axis=3)
         self.act2 = LeakyReLU()
     
     def _squeeze(self, out):
@@ -154,15 +144,13 @@ class convblock(tf.keras.layers.Layer):
     def call(self, x):
         shortcut = self.conv0(x)
         out = self.conv1(x)
-        out = whatever_norm(out)
-        #out = self.bn1(out)
+        out = self.bn1(out)
         out = self.act1(out)
         out = self.conv2(out)
         out = self._squeeze(out)
-        #out = self.bn2(out)
+        out = self.bn2(out)
         out = self.act2(out)
-        # atashi iya ne
-        return whatever_norm(tf.keras.layers.add([shortcut, out]))
+        return tf.keras.layers.add([shortcut, out])
         
 class encoder(tf.keras.layers.Layer):
     def __init__(self):
@@ -180,16 +168,16 @@ class encoder(tf.keras.layers.Layer):
 
         self.flatten_spectrogram = Reshape((-1, 64 * WIDTH // 4))
 
-        self.lstm1 = _lstm(512)
+        self.lstm1 = _lstm(256)
         #self.pyra1 = _pyra(256)
         self.drop1 = Dropout(0.1)
         
-        self.lstm2 = _lstm(512)
-        #self.pyra2 = _pyra(256)
+        self.lstm2 = _lstm(256)
+        self.pyra2 = _pyra(256)
         self.drop2 = Dropout(0.1)
         
-        self.lstm3 = _lstm(512)
-        #self.pyra3 = _pyra(256)
+        self.lstm3 = _lstm(256)
+        self.pyra3 = _pyra(256)
         self.drop3 = Dropout(0.1)
         
     def call(self, zz):
@@ -199,18 +187,15 @@ class encoder(tf.keras.layers.Layer):
         zz = self.flatten_spectrogram(zz)
         
         zz = self.lstm1(zz)
-        zz = whatever_norm(zz)
         #zz = self.pyra1(zz)
         zz = self.drop1(zz)
         
         zz = self.lstm2(zz)
-        zz = whatever_norm(zz)
-        #zz = self.pyra2(zz)
+        zz = self.pyra2(zz)
         zz = self.drop2(zz)
         
         zz = self.lstm3(zz)
-        zz = whatever_norm(zz)
-        #zz = self.pyra3(zz)
+        zz = self.pyra3(zz)
         zz = self.drop3(zz)
         
         # should i be remembering the state?
@@ -226,7 +211,7 @@ class AttentionCell(tf.keras.layers.Layer):
         self.Wa = Dense(self.units)
         self.va = Dense(1)
         self.cell = LSTMCell(units)
-        self.state_size = [units, units]
+        self.state_size = [units, units] # atashi iya ne
     
     def build(self, input_shape):
         self.built = True
@@ -246,9 +231,10 @@ class AttentionCell(tf.keras.layers.Layer):
         return lstmout, hiddenstate
             
 class attend(tf.keras.layers.Layer):
-    def __init__(self, units):
+    def __init__(self, units, max_length):
         super(attend, self).__init__()
         self.units = units
+        self.maxlength = max_length
         """Bahdanau attention:
         e_{ij} = v_a^T tanh(W_a s_{i-1} + U_a h_j)
         \alpha_{ij} = exp(e_{ij}) / \sum_j exp(e_{ij})
@@ -267,10 +253,8 @@ class decoder(tf.keras.layers.Layer):
         tf.keras.layers.Layer.__init__(self)
         self.units = 256
         self.embedding = Dense(self.units)
-        self.attends1 = attend(256)
-        self.attends2 = attend(256)
-        self.map1 = Dense(256)
-        self.map2 = Dense(256)
+        self.attends1 = attend(256, 256)
+        self.attends2 = attend(256, 256)
         self.distrib = Dense(nchars)
         
     def call(self, inputs):
@@ -279,13 +263,7 @@ class decoder(tf.keras.layers.Layer):
         print(tf.shape(secrets))
         print(tf.shape(speech_encode))
         out = self.attends1([secrets, speech_encode])
-        out = whatever_norm(out)
         out = self.attends2([out, speech_encode])
-        out = whatever_norm(out)
-        out = self.map1(out)
-        out = whatever_norm(out)
-        out = self.map2(out)
-        out = whatever_norm(out)
         out = self.distrib(out)
         out = tf.nn.softmax(out)
         return out

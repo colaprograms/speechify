@@ -87,7 +87,7 @@ class LibriSequence:
             wb = whole_buffer()
             wb.params.spectrum_range = config.librispeech_range
             return trans, wb.all(buf)
-        return SequenceFromLibriSpeech(self.ls.info['train'], self.batchsize, get)
+        return SequenceFromLibriSpeech(self.ls.info[type], self.batchsize, get)
 
 """
 class FancySampler:
@@ -142,6 +142,16 @@ class FancySampler:
             yield bufmatrix, transmatrix
 """
 
+def lrsche(epoch):
+    rate = 4
+    until = 9
+    if epoch <= until:
+        return 0.001 + (0.01 - 0.001) * epoch / until
+        #return 0.001 + (0.01 - 0.001) * (epoch - 1) / (until - 1)
+        # start at 0????
+    else:
+        return 0.01 * 0.5**((epoch - until) / rate)
+
 def train():
     encdec = EncoderDecoder()
     spectrum = tf.keras.layers.Input((None, 160, 9))
@@ -153,12 +163,17 @@ def train():
                   loss = 'categorical_crossentropy',
                   metrics = ['accuracy'])
     samp = LibriSequence()
+    checkp = tf.keras.callbacks.ModelCheckpoint(
+            filepath = "checkpoints/weights.{epoch:04d}-{val_loss:.2f}.hdf5",
+            save_weights_only = True
+    )
+    l = tf.keras.callbacks.LearningRateScheduler(lrsche, verbose=1)
     model.fit_generator(
         samp.sequence("train"),
-        steps_per_epoch = 1000,
-        epochs = 10,
+        steps_per_epoch = 10,
+        epochs = 100,
         verbose = 1,
         validation_data = samp.sequence("test"),
-        validation_steps = 10,
-        workers = 4, shuffle=False
+        validation_steps = 2,
+        workers = 4, shuffle=False, callbacks=[checkp, l]
     )
