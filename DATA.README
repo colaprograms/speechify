@@ -1,9 +1,0 @@
-the data format was something like
-
-self.data = {
-    '13': {
-        '197': [
-            {'path': (whatever), 'trans': (whatever)}
-        ]
-    }
-}
