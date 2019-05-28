@@ -76,7 +76,7 @@ class LibriSequence:
         self.path = config.path
         self.ls = LibriSpeech()
         self.ls.load()
-        self.batchsize = 8
+        self.batchsize = 4
     
     def sequence(self, type="train"):
         def get(ix):
@@ -152,7 +152,7 @@ def lrsche(epoch):
     else:
         return 0.01 * 0.5**((epoch - until) / rate)
 
-def train(save="", epoch = 0):
+def train(save=""):
     encdec = EncoderDecoder()
     spectrum = tf.keras.layers.Input((None, 160, 9))
     transcript = tf.keras.layers.Input((None, len(onehot.chars)))
@@ -177,5 +177,5 @@ def train(save="", epoch = 0):
         verbose = 1,
         validation_data = samp.sequence("test"),
         validation_steps = 2,
-        workers = 4, shuffle=False, callbacks=[checkp, l], initial_epoch = epoch
+        workers = 4, shuffle=False, callbacks=[checkp, l]
     )

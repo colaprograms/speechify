@@ -174,17 +174,17 @@ class encoder(tf.keras.layers.Layer):
         WIDTH = 160
         
         self.conv1 = convblock(16, 1)
-        self.conv2 = convblock(64, 2)
+        self.conv2 = convblock(16, 2)
         self.conv3 = convblock(64, 1)
         self.conv4 = convblock(64, 2)
 
         self.flatten_spectrogram = Reshape((-1, 64 * WIDTH // 4))
 
-        self.lstm1 = _lstm(256)
+        self.lstm1 = _lstm(512)
         #self.pyra1 = _pyra(256)
         self.drop1 = Dropout(0.1)
         
-        self.lstm2 = _lstm(256)
+        self.lstm2 = _lstm(512)
         #self.pyra2 = _pyra(256)
         self.drop2 = Dropout(0.1)
         
@@ -219,9 +219,6 @@ class encoder(tf.keras.layers.Layer):
     def initialize_hidden_state(self, bsiz):
         pass
 
-    def get_config(self):
-        pass
-
 class AttentionCell(tf.keras.layers.Layer):
     def __init__(self, units):
         super(AttentionCell, self).__init__()
@@ -247,9 +244,6 @@ class AttentionCell(tf.keras.layers.Layer):
         lstmout, hiddenstate = self.cell(lstm_in, states)
         print(hiddenstate)
         return lstmout, hiddenstate
-    
-    def get_config(self):
-        return {'units': self.units, 'state_size': self.state_size}
             
 class attend(tf.keras.layers.Layer):
     def __init__(self, units):
@@ -267,9 +261,6 @@ class attend(tf.keras.layers.Layer):
         secrets, speech_encode = inputs
         encodestate = self.Ua(speech_encode)
         return self.cell(secrets, constants=(speech_encode, encodestate))
-
-    def get_config(self):
-        return {'units': self.units}
         
 class decoder(tf.keras.layers.Layer):
     def __init__(self):
@@ -284,7 +275,7 @@ class decoder(tf.keras.layers.Layer):
         
     def call(self, inputs):
         trans, speech_encode = inputs
-        secrets = self.embedding(trans*0)#secrets = self.embedding(trans)
+        secrets = self.embedding(trans)
         print(tf.shape(secrets))
         print(tf.shape(speech_encode))
         out = self.attends1([secrets, speech_encode])
@@ -299,9 +290,6 @@ class decoder(tf.keras.layers.Layer):
         out = tf.nn.softmax(out)
         return out
 
-    def get_config(self):
-        return {'units': self.units}
-
 class EncoderDecoder(tf.keras.Model):
     def __init__(self):
         super(EncoderDecoder, self).__init__()
@@ -313,7 +301,4 @@ class EncoderDecoder(tf.keras.Model):
         return self.dec([transcript, speech_encode])
     
     def loss(self, transcript, decode):
-        pass
-
-    def get_config(self):
         pass
