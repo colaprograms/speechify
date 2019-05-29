@@ -10,6 +10,7 @@ if place == "sandbox":
 else:
     index = "index"
     path = "../speechify_dat/combined"
+    specpath = "/home/cola/src/spectrogram"#specpath = "../speechify_dat/spectrogram"
     microphone_volume_range = -6, 1.2 #-4.9, 1.2
 
 if True:

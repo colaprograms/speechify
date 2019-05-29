@@ -53,7 +53,8 @@ from tensorflow.keras.layers import BatchNormalization, \
                             Dense, \
                             Reshape, \
                             Dropout, \
-                            Bidirectional
+                            Bidirectional,\
+                            Flatten
 from tensorflow.keras import Sequential
 
 def _lstm(size):
@@ -171,30 +172,35 @@ class encoder(tf.keras.layers.Layer):
         # so we should probably add location data to
         # the starting image, like rotating between two phases
         # or adding a spinner.
-        WIDTH = 160
         
         self.conv1 = convblock(16, 1)
         self.conv2 = convblock(16, 2)
         self.conv3 = convblock(64, 1)
         self.conv4 = convblock(64, 2)
 
+        WIDTH = 80
         self.flatten_spectrogram = Reshape((-1, 64 * WIDTH // 4))
+        #self.flatten_spectrogram = Flatten()
 
-        self.lstm1 = _lstm(512)
+        self.lstm1 = _lstm(256)
         #self.pyra1 = _pyra(256)
         self.drop1 = Dropout(0.1)
         
-        self.lstm2 = _lstm(512)
-        #self.pyra2 = _pyra(256)
+        self.lstm2 = _lstm(256)
+        self.pyra2 = _pyra(256)
         self.drop2 = Dropout(0.1)
         
         self.lstm3 = _lstm(512)
-        #self.pyra3 = _pyra(256)
+        self.pyra3 = _pyra(256)
         self.drop3 = Dropout(0.1)
         
     def call(self, zz):
-        for fn in [self.conv1, self.conv2, self.conv3, self.conv4]:
-            zz = fn(zz)
+        zz = tf.concat([zz, self.conv1(zz)], axis=-1)
+        zz = self.conv2(zz)
+        zz = tf.concat([zz, self.conv3(zz)], axis=-1)
+        zz = self.conv4(zz)
+        #for fn in [self.conv1, self.conv2, self.conv3, self.conv4]:
+        #    zz = fn(zz)
         
         zz = self.flatten_spectrogram(zz)
         
@@ -205,18 +211,21 @@ class encoder(tf.keras.layers.Layer):
         
         zz = self.lstm2(zz)
         zz = whatever_norm(zz)
-        #zz = self.pyra2(zz)
+        zz = self.pyra2(zz)
         zz = self.drop2(zz)
         
         zz = self.lstm3(zz)
         zz = whatever_norm(zz)
-        #zz = self.pyra3(zz)
+        zz = self.pyra3(zz)
         zz = self.drop3(zz)
         
         # should i be remembering the state?
         return zz
 
     def initialize_hidden_state(self, bsiz):
+        pass
+
+    def get_config(self):
         pass
 
 class AttentionCell(tf.keras.layers.Layer):
@@ -244,6 +253,9 @@ class AttentionCell(tf.keras.layers.Layer):
         lstmout, hiddenstate = self.cell(lstm_in, states)
         print(hiddenstate)
         return lstmout, hiddenstate
+    
+    def get_config(self):
+        return {'units': self.units, 'state_size': self.state_size}
             
 class attend(tf.keras.layers.Layer):
     def __init__(self, units):
@@ -261,27 +273,31 @@ class attend(tf.keras.layers.Layer):
         secrets, speech_encode = inputs
         encodestate = self.Ua(speech_encode)
         return self.cell(secrets, constants=(speech_encode, encodestate))
+
+    def get_config(self):
+        return {'units': self.units}
         
 class decoder(tf.keras.layers.Layer):
     def __init__(self):
         tf.keras.layers.Layer.__init__(self)
-        self.units = 256
+        self.units = 64
+        units = 64
         self.embedding = Dense(self.units)
-        self.attends1 = attend(256)
-        self.attends2 = attend(256)
-        self.map1 = Dense(256)
-        self.map2 = Dense(256)
+        self.attends1 = attend(units)
+        self.attends2 = attend(units)
+        self.attends3 = attend(units)
+        self.map1 = Dense(units)
+        self.map2 = Dense(units)
         self.distrib = Dense(nchars)
         
     def call(self, inputs):
         trans, speech_encode = inputs
-        secrets = self.embedding(trans)
+        secrets = self.embedding(trans)#secrets = self.embedding(trans)
         print(tf.shape(secrets))
         print(tf.shape(speech_encode))
-        out = self.attends1([secrets, speech_encode])
-        out = whatever_norm(out)
-        out = self.attends2([out, speech_encode])
-        out = whatever_norm(out)
+        out = whatever_norm(self.attends1([secrets, speech_encode]))
+        out += whatever_norm(self.attends2([out, speech_encode]))
+        out = whatever_norm(self.attends3([out, speech_encode]))
         out = self.map1(out)
         out = whatever_norm(out)
         out = self.map2(out)
@@ -289,6 +305,9 @@ class decoder(tf.keras.layers.Layer):
         out = self.distrib(out)
         out = tf.nn.softmax(out)
         return out
+
+    def get_config(self):
+        return {'units': self.units}
 
 class EncoderDecoder(tf.keras.Model):
     def __init__(self):
@@ -301,4 +320,7 @@ class EncoderDecoder(tf.keras.Model):
         return self.dec([transcript, speech_encode])
     
     def loss(self, transcript, decode):
+        pass
+
+    def get_config(self):
         pass

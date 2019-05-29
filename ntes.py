@@ -28,8 +28,6 @@ if __name__ == "__main__":
         #print("Setting float16 and allow_growth")
         #tf.keras.backend.set_floatx("float16")
         #tf.keras.backend.set_epsilon(1e-4)
-        os.environ['TF_ENABLE_XLA'] = "1"
-        os.environ['TF_ENABLE_AUTO_MIXED_PRECISION'] = "1"
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         tf.keras.backend.set_session(tf.Session(config=config))

@@ -4,11 +4,32 @@ from os.path import join
 import pickle
 import random
 import soundfile as sf
+import numpy as np
+from util.spectrogram_generator import whole_buffer
+import config
 
 PATH = "index"
 
 def listdir(a, *p):
     return os.listdir(join(a, *p))
+
+class FilesToSpectrogram:
+    def __init__(self):
+        self.path = config.path
+        self.wb = whole_buffer()
+        self.wb.params.spectrum_range = config.librispeech_range
+
+    def to_spectrogram(self, file):
+        buf, _ = sf.read(file)
+        return self.wb.all(buf)
+
+    def write_out_spectrogram(self, dest, file):
+        spec = self.to_spectrogram(file)*32
+        if np.max(spec) > 32000 or np.min(spec) < -32000:
+            print("value out of range:", np.max(spec), np.min(spec))
+            raise Exception("nope")
+        spec = spec.astype(np.int16)
+        np.save(dest, spec)
 
 class LibriSpeech:
     """Typical use:

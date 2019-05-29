@@ -9,7 +9,7 @@ import util.onehot as onehot
 import config
 
 WIDTH = 80
-ENDPAD = 6
+ENDPAD = 1
 BUFPAD = 16
 THICKNESS = 9
 
@@ -33,6 +33,8 @@ def _create(get, start, end):
     longest_trans = 0
     for i in range(0, end - start):
         trans, buf = get(start + i)
+        trans = trans[:16]
+        buf = buf[:64, :]
         assert buf.shape[1:] == (WIDTH, 3)
         longest_buf = max(longest_buf, buf.shape[0])
         longest_trans = max(longest_trans, len(trans))
@@ -74,20 +76,30 @@ class SequenceFromLibriSpeech(tf.keras.utils.Sequence):
 class LibriSequence:
     def __init__(self):
         self.path = config.path
+        self.specpath = config.specpath
         self.ls = LibriSpeech()
         self.ls.load()
-        self.batchsize = 4
+        self.batchsize = 128
     
     def sequence(self, type="train"):
+        array = self.ls.info[type][::-1]
         def get(ix):
-            reader,book,i = self.ls.info[type][ix]
+            reader,book,i = array[ix]
             file = self.ls.data[reader][book][i]
             buf, _ = sf.read(join(self.path, file['path']))
             trans = file['trans']
             wb = whole_buffer()
             wb.params.spectrum_range = config.librispeech_range
             return trans, wb.all(buf)
-        return SequenceFromLibriSpeech(self.ls.info[type], self.batchsize, get)
+        def get2(ix):
+            reader,book,i = array[ix]
+            file = self.ls.data[reader][book][i]
+            path = file['path']
+            if path.endswith(".flac"):
+                path = path[:-5] + ".npy"
+            buf = numpy.load(join(self.specpath, path)).astype(numpy.float32)/4096
+            return file['trans'], buf
+        return SequenceFromLibriSpeech(array, self.batchsize, get2)
 
 """
 class FancySampler:
@@ -152,16 +164,20 @@ def lrsche(epoch):
     else:
         return 0.01 * 0.5**((epoch - until) / rate)
 
-def train(save="", epoch_=0):
+def train(save="", epoch = 0):
     encdec = EncoderDecoder()
-    spectrum = tf.keras.layers.Input((None, WIDTH, 9))
+    spectrum = tf.keras.layers.Input((None, WIDTH, THICKNESS))
     transcript = tf.keras.layers.Input((None, len(onehot.chars)))
     decode = encdec(spectrum, transcript)
-    #decode = tf.nn.softmax(decode)
+    #run_options = tf.RunOptions(trace_level = tf.RunOptions.FULL_TRACE)
+    #run_metadata = tf.RunMetadata()
     model = tf.keras.models.Model([spectrum, transcript], decode)
     model.compile(optimizer=tf.keras.optimizers.SGD(lr=0.001, momentum=0.9, decay=0, nesterov=True),
                   loss = 'categorical_crossentropy',
-                  metrics = ['accuracy'])
+                  metrics = ['accuracy']#,
+                  #options = run_options,
+                  #run_metadata = run_metadata
+                  )
     samp = LibriSequence()
     checkp = tf.keras.callbacks.ModelCheckpoint(
             filepath = "checkpoints/weights.{epoch:04d}-{val_loss:.2f}.hdf5",
@@ -170,11 +186,12 @@ def train(save="", epoch_=0):
     if save != "":
         model.load_weights(save)
     l = tf.keras.callbacks.LearningRateScheduler(lrsche, verbose=1)
+    #tb = tf.keras.callbacks.TensorBoard("../speechify_log", 1, batch_size=8,
+            #update_freq=20000)
     model.fit_generator(
         samp.sequence("train"),
-        epochs = 100,
+        epochs = 10,
         verbose = 1,
         validation_data = samp.sequence("test"),
-        initial_epoch = epoch_,
-        workers = 4, shuffle=False, callbacks=[checkp, l]
+        workers = 4, shuffle=False, callbacks=[checkp, l], initial_epoch = epoch
     )
