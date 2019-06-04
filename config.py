@@ -1,12 +1,12 @@
 # Configuration
 
-place = "home"
+place = "sandbox"
 #place = "home"
 
 if place == "sandbox":
     index = "index"
     path = r"c:\users\meta\documents\speechify\LibriSpeech\combined"
-    microphone_volume_range = -4, 2
+    microphone_volume_range = -6, 1.2
 else:
     index = "index"
     path = "../speechify_dat/combined"
