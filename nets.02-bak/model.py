@@ -67,7 +67,10 @@ def _pyra(size):
     # twice the size by default, I think, so project all four
     # of those things down? Or two separate projections?
     def pyramids(zz):
-        # assuming tf.shape(zz)[1] is zero mod BUFPAD
+        #pads = [[0, 0],
+        #        [0, tf.floormod(tf.shape(zz)[1], 2)], # padded along height axis
+        #        [0, 0]]
+        #zz = tf.pad(zz, pads, "CONSTANT")
         zz = tf.concat([zz[:, ::2, :], zz[:, 1::2, :]], -1)
         return zz
     proj = Dense(size)
@@ -178,12 +181,15 @@ class encoder(tf.keras.layers.Layer):
         self.flatten_spectrogram = Reshape((-1, 64 * WIDTH // 4))
 
         self.lstm1 = _lstm(512)
+        #self.pyra1 = _pyra(256)
         self.drop1 = Dropout(0.1)
         
         self.lstm2 = _lstm(512)
+        #self.pyra2 = _pyra(256)
         self.drop2 = Dropout(0.1)
         
         self.lstm3 = _lstm(512)
+        #self.pyra3 = _pyra(256)
         self.drop3 = Dropout(0.1)
         
     def call(self, zz):
@@ -194,14 +200,17 @@ class encoder(tf.keras.layers.Layer):
         
         zz = self.lstm1(zz)
         zz = whatever_norm(zz)
+        #zz = self.pyra1(zz)
         zz = self.drop1(zz)
         
         zz = self.lstm2(zz)
         zz = whatever_norm(zz)
+        #zz = self.pyra2(zz)
         zz = self.drop2(zz)
         
         zz = self.lstm3(zz)
         zz = whatever_norm(zz)
+        #zz = self.pyra3(zz)
         zz = self.drop3(zz)
         
         # should i be remembering the state?

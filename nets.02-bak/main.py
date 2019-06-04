@@ -1,20 +1,18 @@
 import tensorflow as tf
 import numpy
+
 from util.data import LibriSpeech
 from util.spectrogram_generator import whole_buffer
+
 from nets.model import EncoderDecoder
 import soundfile as sf
 from os.path import join
+
 import util.onehot as onehot
 import config
 
-WIDTH = 80
-ENDPAD = 6
-BUFPAD = 16
-THICKNESS = 9
-
 class bufmixer:
-    z = numpy.linspace(0, 1, WIDTH)
+    z = numpy.linspace(0, 1, 160)
     bufmixer0 = numpy.maximum(2*z - 1, 0)[:, None]
     bufmixer1 = 1 - numpy.abs(2*z - 1)[:, None]
     bufmixer2 = numpy.maximum(1 - 2*z, 0)[:, None]
@@ -25,6 +23,8 @@ class bufmixer:
                                   buf * bufmixer.bufmixer1,
                                   buf * bufmixer.bufmixer2], axis=2)
 
+ENDPAD = 6
+BUFPAD = 16
 
 def _create(get, start, end):
     bufs = []
@@ -33,13 +33,13 @@ def _create(get, start, end):
     longest_trans = 0
     for i in range(0, end - start):
         trans, buf = get(start + i)
-        assert buf.shape[1:] == (WIDTH, 3)
+        assert buf.shape[1:] == (160, 3)
         longest_buf = max(longest_buf, buf.shape[0])
         longest_trans = max(longest_trans, len(trans))
         bufs.append(buf)
         transs.append(trans)
     longest_buf = ((longest_buf + BUFPAD - 1) // BUFPAD) * BUFPAD
-    bufmatrix = numpy.zeros((len(bufs), longest_buf, WIDTH, 9))
+    bufmatrix = numpy.zeros((len(bufs), longest_buf, 160, 9))
     for i, buf in enumerate(bufs):
         bufmatrix[i, :buf.shape[0], :, :] = bufmixer.mixer(buf)
     longest_trans += 1 + ENDPAD
@@ -149,14 +149,12 @@ def lrsche(epoch):
         return 0.001 + (0.01 - 0.001) * epoch / until
         #return 0.001 + (0.01 - 0.001) * (epoch - 1) / (until - 1)
         # start at 0????
-    elif epoch <= 17:
-        return 0.01 * 0.5**((epoch - until) / rate)
     else:
-        return lrsche(epoch - 18)
+        return 0.01 * 0.5**((epoch - until) / rate)
 
-def train(save="", epoch_=0):
+def train(save=""):
     encdec = EncoderDecoder()
-    spectrum = tf.keras.layers.Input((None, WIDTH, 9))
+    spectrum = tf.keras.layers.Input((None, 160, 9))
     transcript = tf.keras.layers.Input((None, len(onehot.chars)))
     decode = encdec(spectrum, transcript)
     #decode = tf.nn.softmax(decode)
@@ -174,9 +172,10 @@ def train(save="", epoch_=0):
     l = tf.keras.callbacks.LearningRateScheduler(lrsche, verbose=1)
     model.fit_generator(
         samp.sequence("train"),
+        steps_per_epoch = 10,
         epochs = 100,
         verbose = 1,
         validation_data = samp.sequence("test"),
-        initial_epoch = epoch_,
+        validation_steps = 2,
         workers = 4, shuffle=False, callbacks=[checkp, l]
     )
