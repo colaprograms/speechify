@@ -77,7 +77,9 @@ def _pyra(size):
     return fn
 
 def whatever_norm(z):
-    return tf.contrib.layers.layer_norm(z, center=False, scale=False)
+    mean, variance = tf.nn.moments(z, [z.shape.ndims - 1], keep_dims = True)
+    return tf.nn.batch_normalization(z, mean, variance, None, None, variance_epsilon=1e-4)
+    #return tf.contrib.layers.layer_norm(z, center=False, scale=False)
 
 class initial_state(tf.keras.layers.Layer):
     def __init__(self, units,
@@ -224,6 +226,7 @@ class AttentionCell(tf.keras.layers.Layer):
         
     def call(self, inputs, states, constants):
         speech_encode, encodestate = constants
+        print("states:", states)
         state = self.Wa(states[0])
         state = tf.expand_dims(state, axis=1)
         attentions = self.va(tf.tanh(state + encodestate))
@@ -233,7 +236,7 @@ class AttentionCell(tf.keras.layers.Layer):
                 attention_weights, speech_encode)
         lstm_in = tf.concat([inputs, context], axis=1)
         lstmout, hiddenstate = self.cell(lstm_in, states)
-        print(hiddenstate)
+        #print(hiddenstate)
         return lstmout, hiddenstate
             
 class attend(tf.keras.layers.Layer):
@@ -252,6 +255,14 @@ class attend(tf.keras.layers.Layer):
         secrets, speech_encode = inputs
         encodestate = self.Ua(speech_encode)
         return self.cell(secrets, constants=(speech_encode, encodestate))
+
+    def get_encode_state(self, speech_encode):
+        return self.Ua(speech_encode)
+
+    def call_one(self, secrets, last_state, speech_encode):
+        encodestate = self.Ua(speech_encode)
+        return self.cell.cell.call(secrets, last_state, constants=(speech_encode, encodestate))
+        #return self.cell.cell.call(secrets, last_state, constants)
         
 class decoder(tf.keras.layers.Layer):
     def __init__(self):
@@ -280,6 +291,37 @@ class decoder(tf.keras.layers.Layer):
         out = self.distrib(out)
         out = tf.nn.softmax(out)
         return out
+
+    def get_encode_state(self, speech_encode):
+        return (self.attends1.get_encode_state(speech_encode),
+                self.attends2.get_encode_state(speech_encode))
+
+    def prepare_encode(self):
+        placeholder = lambda *z: tf.placeholder(tf.float32, z)
+        speech_encode = placeholder(1, None, None)
+        return speech_encode, self.get_encode_state(speech_encode)
+
+    def decode_one(self):
+        placeholder = lambda *z: tf.placeholder(tf.float32, z)
+        trans = placeholder(1, None)
+        speech_encode = placeholder(1, None, None)
+        last1 = [placeholder(1, 256), placeholder(1, 256)]
+        last2 = [placeholder(1, 256), placeholder(1, 256)]
+        inputs = [trans, speech_encode, (last1, last2)]
+
+        secrets = self.embedding(trans)
+        out, last1 = self.attends1.call_one(secrets, last1, speech_encode)
+        out = whatever_norm(out)
+        out, last2 = self.attends2.call_one(out, last2, speech_encode)
+        out = whatever_norm(out)
+        out = self.map1(out)
+        out = whatever_norm(out)
+        out = self.map2(out)
+        out = whatever_norm(out)
+        out = self.distrib(out)
+        out = tf.nn.softmax(out)
+        outputs = [out, (last1, last2)]
+        return inputs, outputs
 
 class EncoderDecoder(tf.keras.Model):
     def __init__(self):

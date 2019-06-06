@@ -13,6 +13,9 @@ ENDPAD = 6
 BUFPAD = 16
 THICKNESS = 9
 
+def _PAD(j, m):
+    return ((j + m - 1) // m) * m
+
 class bufmixer:
     z = numpy.linspace(0, 1, WIDTH)
     bufmixer0 = numpy.maximum(2*z - 1, 0)[:, None]
@@ -25,19 +28,45 @@ class bufmixer:
                                   buf * bufmixer.bufmixer1,
                                   buf * bufmixer.bufmixer2], axis=2)
 
+def _buffer_block(buffers):
+    longest_buf = 0
+    for buf in buffers:
+        assert buf.shape[1:] == (WIDTH, 3)
+        longest_buf = max(longest_buf, buf.shape[0])
+    longest_buf = _PAD(longest_buf, BUFPAD)
+    bufmatrix = numpy.zeros((len(buffers), longest_buf, WIDTH, 9))
+    for i, buf in enumerate(buffers):
+        bufmatrix[i, :buf.shape[0], :, :] = bufmixer.mixer(buf)
+    return bufmatrix
+
+def _trans_block(transs):
+    longest_trans = 0
+    for trans in transs:
+        longest_trans = max(longest_trans, len(trans))
+    longest_trans += 1 + ENDPAD
+    shape = (len(transs), longest_trans, onehot.nchars)
+    transmatrix = numpy.zeros(shape)
+    transoffset = numpy.zeros(shape)
+    for i, trans in enumerate(transs):
+        trans = "@" + trans + "$" * (longest_trans - len(trans) - 1)
+        for j, c in enumerate(trans):
+            transmatrix[i, j, onehot.idx[c]] = 1
+    transoffset[:, :-1, :] = transmatrix[:, 1:, :]
+    transoffset[:, -1, onehot.idx["$"]] = 1
+    return transmatrix, transoffset
 
 def _create(get, start, end):
     bufs = []
     transs = []
-    longest_buf = 0
-    longest_trans = 0
     for i in range(0, end - start):
         trans, buf = get(start + i)
-        assert buf.shape[1:] == (WIDTH, 3)
-        longest_buf = max(longest_buf, buf.shape[0])
-        longest_trans = max(longest_trans, len(trans))
         bufs.append(buf)
         transs.append(trans)
+    bufmatrix = _buffer_block(bufs)
+    transmatrix, transoffset = _trans_block(transs)
+    return (bufmatrix, transmatrix), transoffset
+
+"""
     longest_buf = ((longest_buf + BUFPAD - 1) // BUFPAD) * BUFPAD
     bufmatrix = numpy.zeros((len(bufs), longest_buf, WIDTH, 9))
     for i, buf in enumerate(bufs):
@@ -53,6 +82,7 @@ def _create(get, start, end):
     transoffset[:, :-1, :] = transmatrix[:, 1:, :]
     transoffset[:, -1, onehot.idx["$"]] = 1
     return (bufmatrix, transmatrix), transoffset
+"""
 
 class SequenceFromLibriSpeech(tf.keras.utils.Sequence):
     def __init__(self, dat, batchsize, get):
