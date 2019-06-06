@@ -66,6 +66,51 @@ def _create(get, start, end):
     transmatrix, transoffset = _trans_block(transs)
     return (bufmatrix, transmatrix), transoffset
 
+class WarpEvaluator:
+    def __init__(self):
+        pass
+
+    def __call__(self, buf, src, dst):
+        with tf.device("/cpu:0"):
+            ret = tf.contrib.image.sparse_image_warp(buf, src, dst, num_boundary_points=1)[0]
+            return ret.eval(session=tf.keras.backend.get_session())
+
+warpevaluator = WarpEvaluator()
+
+def warp(buf):
+    batch, tau, height, channels = buf.shape
+    W = min(20, round(tau/4))
+    src = numpy.zeros((batch, 1, 2))
+    dst = numpy.zeros((batch, 1, 2))
+    src[:, 0, 1] = tau/2
+    dst[:, 0, 1] = tau/2
+    src[:, 0, 0] = W + (tau - 2*W) * numpy.random.random(size=batch)
+    dst[:, 0, 0] = src[:, 0, 0] - W + 2*W*numpy.random.random(size=batch)
+    buf[:] = warpevaluator(buf, src, dst)
+
+def frequency_mask(buf, m):
+    batch, tau, height, channels = buf.shape
+    F = 27
+    for i in range(m):
+        f = numpy.ceil(F * numpy.random.random(size=batch)).astype(int)
+        f0 = ((height - f) * numpy.random.random(size=batch)).astype(int)
+        for j in range(batch):
+            buf[j, :, f0[j]:f[j]+f0[j], :] = 0
+
+def time_mask(buf, m):
+    batch, tau, height, channels = buf.shape
+    T = min(40, round(tau / 2))
+    for i in range(m):
+        t = numpy.ceil(T * numpy.random.random(size=batch)).astype(int)
+        t0 = ((tau - t) * numpy.random.random(size=batch)).astype(int)
+        for j in range(batch):
+            buf[j, t0[j]:t[j]+t0[j], :, :] = 0
+
+def specaugment(buf):
+    #warp(buf)
+    frequency_mask(buf, 2)
+    time_mask(buf, 2)
+
 """
     longest_buf = ((longest_buf + BUFPAD - 1) // BUFPAD) * BUFPAD
     bufmatrix = numpy.zeros((len(bufs), longest_buf, WIDTH, 9))
@@ -85,11 +130,12 @@ def _create(get, start, end):
 """
 
 class SequenceFromLibriSpeech(tf.keras.utils.Sequence):
-    def __init__(self, dat, batchsize, get):
+    def __init__(self, dat, batchsize, get, drop_chars=False):
         self.data = dat
         self.batchsize = batchsize
         #self.wb = wholebuffer
         self.get = get
+        self.dropchar = drop_chars
     
     def __len__(self):
         return (len(self.data) + self.batchsize - 1) // self.batchsize
@@ -99,6 +145,16 @@ class SequenceFromLibriSpeech(tf.keras.utils.Sequence):
         end = min((idx + 1) * self.batchsize, len(self.data))
         #print("returning batch %d %d" % (start, end))
         retval = _create(self.get, start, end)
+        if self.dropchar:
+            buf = retval[0][0]
+            specaugment(buf)
+            transmatrix = retval[0][1]
+            transmatrix = transmatrix * (0.9 - 0.1/30) + 0.1/30
+            for i in range(transmatrix.shape[0]):
+                for j in range(transmatrix.shape[1]):
+                    if numpy.random.random() < 0.1:
+                        dist = numpy.exp(numpy.random.normal(size=transmatrix.shape[2]))
+                        transmatrix[i, j, :] = dist / numpy.sum(dist)
         return retval
         
 class LibriSequence:
@@ -117,7 +173,7 @@ class LibriSequence:
             wb = whole_buffer()
             wb.params.spectrum_range = config.librispeech_range
             return trans, wb.all(buf)
-        return SequenceFromLibriSpeech(self.ls.info[type], self.batchsize, get)
+        return SequenceFromLibriSpeech(self.ls.info[type], self.batchsize, get, drop_chars=type == "train")
 
 """
 class FancySampler:

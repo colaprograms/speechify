@@ -32,6 +32,7 @@ if __name__ == "__main__":
         print(out)
         print(out2)
         print(np.mean([a == b for (a, b) in zip(out[1:], out2[:-1])]))
+    """
     if True:
         for i in range(20):
             out2 = "@" + out2
@@ -43,8 +44,9 @@ if __name__ == "__main__":
             for i in range(decodes.shape[1]):
                 out2 += onehot.chars[np.argmax(decodes[0, i, :])]
             print(out2)
+    """
 
-        """
+    if True:
         Z = tf.placeholder(np.float32, (None, None, 80, 9))
         z = f.encdec.enc(Z)
         h = B.function(Z, z)
@@ -60,12 +62,11 @@ if __name__ == "__main__":
         for i in range(transmatrix.shape[1]):
             out += onehot.chars[np.argmax(transmatrix[0, i, :])]
             decodes, last = decoder([transmatrix[:, i, :], speech_encode, last])
-            #print(np.mean(last[0][0]), np.mean(last[1][0]))#print(np.mean(last[0][0]))
-            out2 += onehot.chars[np.argmax(decodes[0, :])]
+            print(trans[i] if i < len(trans) else "$", "".join(sorted((c for c in onehot.chars), key=lambda c: -decodes[0, onehot.idx[c]])))
+            #out2 += onehot.chars[np.argmax(decodes[0, :])]
         print(out)
         print(out2)
         print(np.mean([a == b for (a, b) in zip(out[1:], out2[:-1])]))
-        """
 
 """sa = Sampler()
 file, buf = sa.rand()
