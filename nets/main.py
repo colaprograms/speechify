@@ -228,6 +228,7 @@ class FancySampler:
             yield bufmatrix, transmatrix
 """
 
+"""
 def lrsche(epoch):
     rate = 4
     until = 9
@@ -239,6 +240,20 @@ def lrsche(epoch):
         return 0.01 * 0.5**((epoch - until) / rate)
     else:
         return lrsche(epoch - 18)
+        """
+
+from importlib import reload
+from traceback import print_exc
+def lrsche(epoch):
+    while True:
+        try:
+            import lrsche
+            reload(lrsche)
+            return lrsche.lrsche(epoch)
+        except:
+            print_exc()
+            print("")
+            input("Hit return to try and load it again.")
 
 def train(save="", epoch_=0):
     encdec = EncoderDecoder()

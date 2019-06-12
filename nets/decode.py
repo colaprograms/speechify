@@ -30,7 +30,7 @@ class ModelDecoder:
     def __init__(self):
         pass
 
-    def build(self, save="models/weights-04-test.hdf5"):
+    def build(self, save="models/weights-06-test.hdf5"):
         self.encdec = EncoderDecoder()
         self.enc = self.encdec.enc
         self.dec = self.encdec.dec
